@@ -2,18 +2,18 @@ import mongoose, { Document, Schema, Model } from "mongoose";
 
 // 1. Message Interface + Mongoose Document
 export interface IMessage extends Document {
-  id: number;
-  sender: string;
-  receiver: string;
+  id: string;
+  from: string;
+  to: string;
   text: string;
   room?: string;
 }
 
 const MessageSchema: Schema = new Schema<IMessage>(
   {
-    id: { type: Number, required: true, unique: true },
-    sender: { type: String, required: true },
-    receiver: { type: String, required: true },
+    id: { type: String, required: true, unique: true },
+    from: { type: String, required: true },
+    to: { type: String, required: true },
     text: { type: String, required: true },
     room: { type: String, required: false },
   },

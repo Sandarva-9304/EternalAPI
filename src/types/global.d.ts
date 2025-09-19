@@ -35,5 +35,12 @@ declare global {
       ) => void;
       sendPrivate: (targetUser: string, text: string) => void;
     };
+    terminalApi: {
+      createTerminal: () => void;
+      writeTerminal: (id: string, data: string) => void;
+      killTerminal: (id: string) => void;
+      onTerminalData: (callback: (data: { id: string; data: string }) => void) => void;
+      resizeTerminal: (id: string, cols: number, rows: number) => void;
+    };
   }
 }

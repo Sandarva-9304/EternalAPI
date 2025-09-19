@@ -3,15 +3,16 @@ export interface IUser extends Document {
   uid: string;
   username: string;
   avatar: string;
-  friends: string[];
+  friends?: string[];
+  friendrequests?: Object[];
 }
-
 const UserSchema: Schema = new Schema<IUser>(
   {
     uid: { type: String, required: true, unique: true },
     username: { type: String, required: true },
     avatar: { type: String, required: true },
-    friends: [{ type: String }], // array of friend uids or usernames
+    friends: [{ type: String, required: false }],
+    friendrequests: [{ type: Object, required: false }],
   },
   { timestamps: true }
 );

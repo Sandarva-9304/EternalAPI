@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import fssync from "fs";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
+import os from "os";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,13 +12,13 @@ const isDev = !app.isPackaged;
 
 const windows = new Set(); // track all windows
 const watchers = new Map();
+let shell = os.platform() === "win32" ? "powershell.exe" : "bash";
 
+const terminals = {};
 // Helper to create a new BrowserWindow
 function createWindow() {
   const win = new BrowserWindow({
     frame: false,
-    minHeight: 600,
-    minWidth: 800,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -123,9 +124,13 @@ app.whenReady().then(() => {
   // Watch folder
   ipcMain.handle("fs:watch", (_, dirPath) => {
     if (watchers.has(dirPath)) return;
-    const watcher = fssync.watch(dirPath, { recursive: true }, (event, filename) => {
-      broadcast("fs:changed", { event, filename, dirPath });
-    });
+    const watcher = fssync.watch(
+      dirPath,
+      { recursive: true },
+      (event, filename) => {
+        broadcast("fs:changed", { event, filename, dirPath });
+      }
+    );
     watchers.set(dirPath, watcher);
   });
 
@@ -135,7 +140,6 @@ app.whenReady().then(() => {
       watchers.delete(dirPath);
     }
   });
-
   // Git
   ipcMain.handle("git:clone", async (_, repoUrl, targetDir) => {
     return new Promise((resolve, reject) => {
@@ -145,6 +149,38 @@ app.whenReady().then(() => {
         else reject(new Error(`git clone failed with code ${code}`));
       });
     });
+  });
+  ipcMain.handle("terminal:create", (event) => {
+    const ptyProcess = pty.spawn(shell, [], {
+      name: "xterm-color",
+      cols: 80,
+      rows: 24,
+      cwd: process.env.HOME,
+      env: process.env,
+    });
+
+    const id = Date.now().toString();
+    terminals[id] = ptyProcess;
+
+    ptyProcess.onData((data) => {
+      event.sender.send("terminal:data", { id, data });
+    });
+
+    return id;
+  });
+  ipcMain.on("terminal:write", (event, { id, data }) => {
+    terminals[id]?.write(data);
+  });
+
+  // Resize
+  ipcMain.on("terminal:resize", (event, { id, cols, rows }) => {
+    terminals[id]?.resize(cols, rows);
+  });
+
+  // Kill
+  ipcMain.on("terminal:kill", (event, { id }) => {
+    terminals[id]?.kill();
+    delete terminals[id];
   });
 });
 

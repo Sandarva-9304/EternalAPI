@@ -47,7 +47,7 @@ const App = () => {
                 }
               }}
             />
-            {downOpen && <BottomPanel />}
+            {downOpen && <BottomPanel setDownOpen={setDownOpen} />}
           </div>
           {rightOpen && <RightPanel />}
         </div>

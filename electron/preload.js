@@ -33,3 +33,24 @@ contextBridge.exposeInMainWorld("chatAPI", {
   on: (channel, callback) =>
     ipcRenderer.on(channel, (_, data) => callback(data)),
 });
+const originalConsoleError = console.error;
+console.error = (...args) => {
+  if (
+    typeof args[0] === "string" &&
+    args[0].includes("Autofill.enable") ||
+    args[0].includes("Autofill.setAddresses")
+  ) {
+    return; // ignore
+  }
+  originalConsoleError(...args);
+};
+
+contextBridge.exposeInMainWorld("terminalAPI", {
+  createTerminal: () => ipcRenderer.invoke("terminal:create"),
+  writeTerminal: (id, data) => ipcRenderer.send("terminal:write", { id, data }),
+  resizeTerminal: (id, cols, rows) =>
+    ipcRenderer.send("terminal:resize", { id, cols, rows }),
+  killTerminal: (id) => ipcRenderer.send("terminal:kill", { id }),
+  onTerminalData: (callback) =>
+    ipcRenderer.on("terminal:data", (_, payload) => callback(payload)),
+});
