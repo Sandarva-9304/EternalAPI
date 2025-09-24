@@ -7,3 +7,7 @@ export {default as Trash} from "./Trash";
 export {default as Search} from "./Search";
 export {default as Messages} from "./Messages";
 export {default as AddTask} from "./AddTask";
+export {default as CloseFolder} from "./CloseFolder";
+export {default as Reload} from "./Reload";
+export {default as NewFile} from "./NewFile";
+export {default as NewFolder} from "./NewFolder";

@@ -9,10 +9,14 @@ import {
 
 const Sidebar = ({
   current,
+  currentRight,
   onSelect,
+  onSelectRight,
 }: {
   current: "files" | "search" | "git" | "db" | null;
+  currentRight: "chat" | "assist" | null;
   onSelect: (content: "files" | "search" | "git" | "db" | null) => void;
+  onSelectRight: (content: "chat" | "assist" | null) => void;
 }) => {
   return (
     <ul className="flex flex-col items-center justify-start w-12 h-[calc(100vh-52px)] bg-primary/30">
@@ -40,8 +44,9 @@ const Sidebar = ({
       >
         <Database solid={current === "db"} />
       </li>
-      <li className="hover:bg-gray-200 px-2 py-4">
-        <Messages solid={false} />
+      <li className="hover:bg-gray-200 px-2 py-4"
+        onClick={() => onSelectRight("chat")}>
+        <Messages solid={currentRight === "chat"} />
       </li>
       <li className="hover:bg-gray-200 px-2 py-4">
         <AddTask solid={false} />

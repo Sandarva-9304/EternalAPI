@@ -1,11 +1,21 @@
 export {};
 
 declare global {
+  interface File {
+    path: string;
+    content: string;
+  }
+  interface SearchResult {
+  filePath: string;
+  matches: { line: number; text: string }[];
+}
   interface Window {
     electronAPI: {
       minimize: () => void;
       maximize: () => void;
       close: () => void;
+
+      searchInWorkspace: (query: string, workspace: string, options?: { matchCase: boolean, wholeWord: boolean, regex: boolean }) => Promise<SearchResult[]>;
 
       newWindow: () => void;
 
@@ -22,8 +32,22 @@ declare global {
       rename: (oldPath: string, newPath: string) => Promise<void>;
       openFile: (filePath: string) => Promise<void>;
 
-      unwatch: (dirPath: string) => void;
       watch: (dirPath: string) => void;
+      unwatch: (dirPath: string) => void;
+      onFsChanged: (
+        callback: (data: {
+          event: string;
+          filename: string;
+          dirPath: string;
+        }) => void
+      ) => void;
+      offFsChanged?: (
+        callback: (data: {
+          event: string;
+          filename: string;
+          dirPath: string;
+        }) => void
+      ) => void;
     };
     chatAPI: {
       register: (username: string) => void;
@@ -35,12 +59,10 @@ declare global {
       ) => void;
       sendPrivate: (targetUser: string, text: string) => void;
     };
-    terminalApi: {
-      createTerminal: () => void;
-      writeTerminal: (id: string, data: string) => void;
-      killTerminal: (id: string) => void;
-      onTerminalData: (callback: (data: { id: string; data: string }) => void) => void;
-      resizeTerminal: (id: string, cols: number, rows: number) => void;
+    terminalAPI: {
+      onData: (cb: (data: string) => void) => void;
+      write: (data: string) => void;
+      resize: (cols: number, rows: number) => void;
     };
   }
 }

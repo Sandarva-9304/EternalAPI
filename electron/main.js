@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import path from "path";
 import fs from "fs/promises";
 import fssync from "fs";
-import { spawn } from "child_process";
+// import { spawn } from "node_pty";
 import { fileURLToPath } from "url";
 import os from "os";
 
@@ -12,7 +12,7 @@ const isDev = !app.isPackaged;
 
 const windows = new Set(); // track all windows
 const watchers = new Map();
-let shell = os.platform() === "win32" ? "powershell.exe" : "bash";
+// let shell;
 
 const terminals = {};
 // Helper to create a new BrowserWindow
@@ -32,7 +32,6 @@ function createWindow() {
   } else {
     win.loadFile(path.join(__dirname, "../dist/index.html"));
   }
-
   win.on("closed", () => {
     windows.delete(win);
   });
@@ -43,17 +42,46 @@ function createWindow() {
 
 // Broadcast to all windows
 function broadcast(channel, data) {
-  windows.forEach((w) => {
-    if (!w.isDestroyed()) {
-      w.webContents.send(channel, data);
-    }
-  });
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send(channel, data);
+  }
 }
 
 // App ready
 app.whenReady().then(() => {
   createWindow();
 
+  // const shellPath =
+  //   process.platform === "win32"
+  //     ? "powershell.exe"
+  //     : process.env.SHELL || "bash";
+  // shell = spawn(shellPath, [], {
+  //   name: "xterm-color",
+  //   cols: 80,
+  //   rows: 24,
+  //   cwd: process.env.HOME,
+  //   env: process.env,
+  // });
+
+  // Send output to renderer
+  // shell.onData((data) => {
+  //   mainWindow.webContents.send("terminal:data", data);
+  // });
+
+  // // Handle input from renderer
+  // ipcMain.on("terminal:write", (_, data) => {
+  //   shell.write(data);
+  // });
+
+  // // Resize terminal
+  // ipcMain.on("terminal:resize", (_, { cols, rows }) => {
+  //   shell.resize(cols, rows);
+  // });
+
+  // // Kill terminal
+  // ipcMain.on("terminal:kill", () => {
+  //   shell.kill();
+  // });
   // Window controls
   ipcMain.on("window:minimize", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -123,15 +151,19 @@ app.whenReady().then(() => {
 
   // Watch folder
   ipcMain.handle("fs:watch", (_, dirPath) => {
-    if (watchers.has(dirPath)) return;
-    const watcher = fssync.watch(
-      dirPath,
-      { recursive: true },
-      (event, filename) => {
-        broadcast("fs:changed", { event, filename, dirPath });
-      }
-    );
-    watchers.set(dirPath, watcher);
+    try{
+      if (watchers.has(dirPath)) return;
+      const watcher = fssync.watch(
+        dirPath,
+        { recursive: true },
+        (event, filename) => {
+          broadcast("fs:changed", { event, filename, dirPath });
+        }
+      );
+      watchers.set(dirPath, watcher);
+    }catch(e){
+      console.log(e);
+    }
   });
 
   ipcMain.handle("fs:unwatch", (_, dirPath) => {
@@ -150,38 +182,49 @@ app.whenReady().then(() => {
       });
     });
   });
-  ipcMain.handle("terminal:create", (event) => {
-    const ptyProcess = pty.spawn(shell, [], {
-      name: "xterm-color",
-      cols: 80,
-      rows: 24,
-      cwd: process.env.HOME,
-      env: process.env,
-    });
+  
 
-    const id = Date.now().toString();
-    terminals[id] = ptyProcess;
+ipcMain.handle(
+  "search-in-workspace",
+  async (
+    _e,
+    workspace,
+    query,
+    options = { matchCase: false, wholeWord: false, regex: false }
+  ) => {
+    if (!query) return [];
 
-    ptyProcess.onData((data) => {
-      event.sender.send("terminal:data", { id, data });
-    });
+    const files = getAllFiles(workspace);
+    const results = [];
 
-    return id;
-  });
-  ipcMain.on("terminal:write", (event, { id, data }) => {
-    terminals[id]?.write(data);
-  });
+    const flags = options.matchCase ? "g" : "gi";
+    let pattern;
+    if (options.regex) {
+      pattern = new RegExp(query, flags);
+    } else {
+      const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const word = options.wholeWord ? `\\b${escaped}\\b` : escaped;
+      pattern = new RegExp(word, flags);
+    }
 
-  // Resize
-  ipcMain.on("terminal:resize", (event, { id, cols, rows }) => {
-    terminals[id]?.resize(cols, rows);
-  });
+    for (const filePath of files) {
+      const content = await fs.promises.readFile(filePath, "utf8");
+      const lines = content.split("\n");
+      const matches = [];
 
-  // Kill
-  ipcMain.on("terminal:kill", (event, { id }) => {
-    terminals[id]?.kill();
-    delete terminals[id];
-  });
+      lines.forEach((line, idx) => {
+        if (pattern.test(line)) {
+          matches.push({ line: idx + 1, text: line.trim() });
+        }
+      });
+
+      if (matches.length > 0) {
+        results.push({ filePath, matches });
+      }
+    }
+    return results;
+  }
+);
 });
 
 // macOS activate
@@ -193,3 +236,18 @@ app.on("activate", () => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
+
+function getAllFiles(dir, extFilter = [".ts", ".tsx", ".js", ".json"]) {
+  let results = [];
+  const list = fs.readdirSync(dir);
+  list.forEach((file) => {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+    if (stat && stat.isDirectory()) {
+      results = results.concat(getAllFiles(filePath, extFilter));
+    } else if (extFilter.includes(path.extname(filePath))) {
+      results.push(filePath);
+    }
+  });
+  return results;
+}

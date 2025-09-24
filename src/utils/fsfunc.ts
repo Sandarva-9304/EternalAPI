@@ -9,7 +9,7 @@ export type FsNode = {
 };
 
 export function joinPath(...parts: string[]) {
-  return parts.join("/").replace(/\/+/g, "/");
+  return parts.join("\\").replace(/\/+/g, "\\");
 }
 
 export async function loadChildren(nodePath: string) {

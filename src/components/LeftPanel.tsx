@@ -1,29 +1,19 @@
 import FileSystem from "./FileSystem";
-import { useState } from "react";
+import SearchPanel from "./Search";
 const LeftPanel = ({
   content,
-  onOpenFile,
 }: {
   content: "files" | "search" | "git" | "db" | null;
-  onOpenFile: (path: string, content: string) => void;
 }) => {
-  const [_, setOpenFile] = useState<{
-    path: string;
-    content: string;
-  } | null>(null);
   switch (content) {
     case "files":
-      return (
-        <FileSystem
-          onOpenFile={onOpenFile}
-        />
-      );
+      return <FileSystem />;
     case "search":
-      return <div className="h-[calc(100vh-52px)] w-1/3">Search</div>;
+      return <SearchPanel/>
     case "git":
-      return <div className="h-[calc(100vh-52px)] w-1/3">Git</div>;
+      return <div className="">Git</div>;
     case "db":
-      return <div className="h-[calc(100vh-52px)] w-1/3">Database</div>;
+      return <div className="">Database</div>;
     default:
       return null;
   }

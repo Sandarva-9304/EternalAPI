@@ -44,6 +44,7 @@ io.on("connection", (socket: Socket) => {
   socket.on("register", async (username: string) => {
     users[username] = socket.id;
     sockets[socket.id] = username;
+    console.log(`${username} registered with id ${socket.id}`);
     // const rooms = await RoomModel.find({ participants: username });
     // for (const room of rooms) {
     //   const roomId=String(room._id);
@@ -60,13 +61,26 @@ io.on("connection", (socket: Socket) => {
     for (const message of pendingMessages) {
       io.to(socket.id).emit("privateMessage", message);
     }
-    console.log(`${username} registered with id ${socket.id}`);
   });
 
   // ✅ One-to-One Messaging
   socket.on(
-    "privateMessage", async ({to, text, id, from, timestamp, chatKey} :
-      {to: string; text: string; id: string; from: string; timestamp: Date; chatKey: string;}) => {
+    "privateMessage",
+    async ({
+      to,
+      text,
+      id,
+      from,
+      timestamp,
+      chatKey,
+    }: {
+      to: string;
+      text: string;
+      id: string;
+      from: string;
+      timestamp: Date;
+      chatKey: string;
+    }) => {
       const toSocketId = users[to]; // lookup by username
       console.log(toSocketId);
       console.log(chatKey);
@@ -124,7 +138,7 @@ io.on("connection", (socket: Socket) => {
           text: `${room} created by ${creator}`,
           timestamp: new Date(),
         };
-        const chatKey=`${room}:${roomId}`
+        const chatKey = `${room}:${roomId}`;
         await redis.rpush(chatKey, message);
         await redis.ltrim(chatKey, -MESSAGE_LIMIT, -1);
         await MessageModel.create(message);
@@ -185,6 +199,34 @@ io.on("connection", (socket: Socket) => {
     }
   );
 
+  // Call signaling messages: offer/answer/ice
+  // Forward an SDP offer to callee
+  socket.on("offer", ({ to, offer, from }: { to: string; offer: any; from: string }) => {
+    console.log("offer-hit");
+    const toId = users[to];
+    console.log(toId);
+    if (toId) {
+      io.to(toId).emit("offer", { from, offer });
+    }
+  });
+
+  // Forward an answer to the caller
+  socket.on("answer", ({ to, answer, from }: { to: string; answer: any; from: string }) => {
+    const toId = users[to];
+    if (toId) {
+      io.to(toId).emit("answer", { from, answer });
+    }
+  });
+
+  // Forward ICE candidates (both ways)
+  socket.on("ice-candidate", ({ to, candidate, from }: { to: string; candidate: any; from: string }) => {
+    const toId = users[to];
+    if (toId) {
+      io.to(toId).emit("ice-candidate", { from, candidate });
+    }
+  });
+
+  
   // Handle disconnect
   socket.on("disconnect", () => {
     const user = sockets[socket.id];
@@ -317,11 +359,35 @@ app.get("/api/roommessages", async (req, res) => {
   try {
     const { room, roomId } = req.query;
     console.log("Fetching messages...");
-    const messages = await redis.lrange(`${room}:${roomId}`, -MESSAGE_LIMIT, -1);
+    const messages = await redis.lrange(
+      `${room}:${roomId}`,
+      -MESSAGE_LIMIT,
+      -1
+    );
     res.json(messages);
   } catch (err) {
     console.error("Error fetching messages:", err);
     res.status(500).json({ error: "Failed to fetch messages" });
+  }
+});
+
+app.get("/api/roommessages/history", async (req, res) => {
+  console.log("fetch history");
+  try {
+    const { room, roomId, before } = req.query;
+    const chatKey = `${room}:${roomId}`;
+    console.log("before", before);
+    const query: any = {
+      chatKey,
+      timestamp: { $lt: new Date(before as string) },
+    };
+    const messages = await MessageModel.find(query)
+      .sort({ timestamp: 1 })
+      .limit(30);
+    res.json(messages);
+  } catch (err) {
+    console.error("Error fetching history:", err);
+    res.status(500).json({ error: "Failed to fetch history" });
   }
 });
 
@@ -331,3 +397,4 @@ httpServer.listen(3000, async () => {
   );
   console.log("Socket.IO server running on port 3000");
 });
+

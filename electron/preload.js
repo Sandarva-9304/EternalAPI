@@ -4,6 +4,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
   minimize: () => ipcRenderer.send("window:minimize"),
   maximize: () => ipcRenderer.send("window:maximize"),
   close: () => ipcRenderer.send("window:close"),
+  searchInWorkspace: (
+    workspace,
+    query,
+    options = { matchCase: false, wholeWord: false, regex: false }
+  ) => ipcRenderer.invoke("search-in-workspace", workspace, query, options),
+  replaceInWorkspace: (
+    workspace,
+    query,
+    replaceText,
+    options = { replaceNext: false, replaceAll: false }
+  ) =>
+    ipcRenderer.invoke(
+      "replace-in-workspace",
+      workspace,
+      query,
+      replaceText,
+      options
+    ),
 
   newWindow: () => ipcRenderer.invoke("window:new"),
 
@@ -36,8 +54,7 @@ contextBridge.exposeInMainWorld("chatAPI", {
 const originalConsoleError = console.error;
 console.error = (...args) => {
   if (
-    typeof args[0] === "string" &&
-    args[0].includes("Autofill.enable") ||
+    (typeof args[0] === "string" && args[0].includes("Autofill.enable")) ||
     args[0].includes("Autofill.setAddresses")
   ) {
     return; // ignore
@@ -45,12 +62,8 @@ console.error = (...args) => {
   originalConsoleError(...args);
 };
 
-contextBridge.exposeInMainWorld("terminalAPI", {
-  createTerminal: () => ipcRenderer.invoke("terminal:create"),
-  writeTerminal: (id, data) => ipcRenderer.send("terminal:write", { id, data }),
-  resizeTerminal: (id, cols, rows) =>
-    ipcRenderer.send("terminal:resize", { id, cols, rows }),
-  killTerminal: (id) => ipcRenderer.send("terminal:kill", { id }),
-  onTerminalData: (callback) =>
-    ipcRenderer.on("terminal:data", (_, payload) => callback(payload)),
-});
+// contextBridge.exposeInMainWorld("terminalAPI", {
+//   onData: (cb) => ipcRenderer.on("terminal:data", (_, data) => cb(data)),
+//   write: (data) => ipcRenderer.send("terminal:write", data),
+//   resize: (cols, rows) => ipcRenderer.send("terminal:resize", { cols, rows }),
+// });

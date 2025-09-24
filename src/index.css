@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --color-primary: #2b4ea2;
+  --color-p1: #2b4ea2;
   --color-primary-sidebar: #1A2130;
   --color-p5: hsl(240, 5.9%, 10%);
   --color-p6: hsl(0, 0%, 98%);

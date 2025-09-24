@@ -22,6 +22,10 @@ import {
   GitBranch,
   ChevronDown,
   ChevronRight,
+  FolderSync,
+  FolderPlus,
+  FolderMinus,
+  FilePlus2,
 } from "lucide-react";
 import {
   Dialog,
@@ -32,15 +36,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-
-const FileSystem = ({
-  onOpenFile,
-}: {
-  onOpenFile: (path: string, content: string) => void;
-}) => {
-  const [workspace, setWorkspace] = useState<string | null>(() =>
-    localStorage.getItem("workspacePath")
-  );
+import { useEditor } from "./contexts/EditorContext";
+const FileSystem = () => {
+  const { workspace, setWorkspace, setActivePath, openFiles, setOpenFiles } =
+    useEditor();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [roots, setRoots] = useState<FsNode[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,16 +65,67 @@ const FileSystem = ({
     };
   }, [workspace]);
 
+  useEffect(() => {
+    const handleChange = ({ event, filename, dirPath }: any) => {
+      // simplest option: just reload the whole tree
+      reloadWorkspace();
+
+      // optional: log/debug
+      console.log("FS changed:", event, filename, dirPath);
+    };
+
+    window.electronAPI.onFsChanged(handleChange);
+
+    return () => {
+      // cleanup listener when component unmounts
+      window.electronAPI.offFsChanged?.(handleChange);
+    };
+  }, [workspace]);
+
+  // helpers inside FileSystem.tsx (or move to fsfunc.ts)
+  const preserveExpanded = (nodes: FsNode[]): Record<string, boolean> => {
+    const map: Record<string, boolean> = {};
+    const traverse = (n: FsNode[]) => {
+      for (const node of n) {
+        if (node.expanded) map[node.path] = true;
+        if (node.children) traverse(node.children);
+      }
+    };
+    traverse(nodes);
+    return map;
+  };
+
+  const applyExpanded = (
+    nodes: FsNode[],
+    expandedMap: Record<string, boolean>
+  ): FsNode[] => {
+    return nodes.map((node) => ({
+      ...node,
+      expanded: expandedMap[node.path] ?? node.expanded,
+      children: node.children
+        ? applyExpanded(node.children, expandedMap)
+        : node.children,
+    }));
+  };
+
+  // replace your reloadWorkspace with this
   const reloadWorkspace = async () => {
     if (!workspace) return;
     try {
+      // keep track of which folders are open
+      const expandedMap = roots ? preserveExpanded(roots) : {};
+
       const entries = await window.electronAPI.readDir(workspace);
       const nodes: FsNode[] = entries.map((e) => ({
         name: e.name,
         path: e.path,
         isDirectory: e.isDirectory,
       }));
-      setRoots(sortNodes(nodes));
+
+      const sorted = sortNodes(nodes);
+
+      // restore expanded state
+      setRoots(applyExpanded(sorted, expandedMap));
       setError(null);
     } catch (e: any) {
       console.error(e);
@@ -86,34 +136,37 @@ const FileSystem = ({
   const handleConfirm = () => {
     if (!workspace) return;
 
-    const name = value.trim();
+    // only check name if needed
+    if (action === "rename" || action === "newFile" || action === "newFolder") {
+      const name = value.trim();
 
-    // disallow empty names
-    if (!name) {
-      setErrorMessage("Name cannot be empty.");
-      return;
-    }
+      // disallow empty names
+      if (!name) {
+        setErrorMessage("Name cannot be empty.");
+        return;
+      }
 
-    // disallow illegal filename characters (Windows reserved chars)
-    if (/[<>:"/\\|?*]/.test(name)) {
-      setErrorMessage('Name contains invalid characters: <>:"/\\|?*');
-      return;
-    }
+      // disallow illegal filename characters (Windows reserved chars)
+      if (/[<>:"/\\|?*]/.test(name)) {
+        setErrorMessage('Name contains invalid characters: <>:"/\\|?*');
+        return;
+      }
 
-    // disallow reserved Windows names
-    const reserved = [
-      "CON",
-      "PRN",
-      "AUX",
-      "NUL",
-      "COM1",
-      "LPT1",
-      "LPT2",
-      "LPT3",
-    ];
-    if (reserved.includes(name.toUpperCase())) {
-      setErrorMessage(`"${name}" is a reserved name.`);
-      return;
+      // disallow reserved Windows names
+      const reserved = [
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        "COM1",
+        "LPT1",
+        "LPT2",
+        "LPT3",
+      ];
+      if (reserved.includes(name.toUpperCase())) {
+        setErrorMessage(`"${name}" is a reserved name.`);
+        return;
+      }
     }
 
     // validation passed → reset error
@@ -124,24 +177,26 @@ const FileSystem = ({
     if (action === "rename" && targetNode) {
       const parentDir = targetNode.path.substring(
         0,
-        targetNode.path.lastIndexOf("/")
+        targetNode.path.lastIndexOf("\\")
       );
-      const newPath = joinPath(parentDir, name);
+      const newPath = joinPath(parentDir, value.trim());
       window.electronAPI.rename(targetNode.path, newPath);
-    } else {
+    } else if (action === "newFile" || action === "newFolder") {
       if (targetNode) {
         dir = targetNode.isDirectory
           ? targetNode.path
           : targetNode.path.substring(0, targetNode.path.lastIndexOf("/"));
       } else {
-        dir = workspace; // ensure files/folders go inside workspace root
+        dir = workspace; // files/folders go inside workspace root
       }
 
       if (action === "newFile") {
-        window.electronAPI.newFile(joinPath(dir, name));
+        window.electronAPI.newFile(joinPath(dir, value.trim()));
       } else if (action === "newFolder") {
-        window.electronAPI.newFolder(joinPath(dir, name));
+        window.electronAPI.newFolder(joinPath(dir, value.trim()));
       }
+    } else if (action === "delete" && targetNode) {
+      window.electronAPI.delete(targetNode.path);
     }
 
     setDialogOpen(false);
@@ -153,10 +208,18 @@ const FileSystem = ({
   const handleFileClick = async (node: FsNode) => {
     if (!node.isDirectory) {
       const content = await window.electronAPI.readFile(node.path);
-      onOpenFile(node.path, content);
+      handleOpenFile(node.path, content);
     }
   };
 
+  const handleOpenFile = (path: string, content: string) => {
+    setActivePath(path);
+    setOpenFiles((prev) =>
+      prev.find((f) => f.path === path)
+        ? prev
+        : [...prev, { path, content } as File]
+    );
+  };
   const handleOpenFolder = async () => {
     try {
       const folder = await window.electronAPI.openFolder();
@@ -295,13 +358,13 @@ const FileSystem = ({
   // UI
   if (!workspace) {
     return (
-      <div className="h-full w-1/3 flex flex-col items-center justify-center gap-4 bg-primary-sidebar text-neutral-300 p-4">
+      <div className="h-full flex flex-col items-center justify-center gap-4 bg-primary-sidebar text-neutral-300 p-4">
         <h3 className="text-lg font-semibold text-p6">No folder opened</h3>
         <p className="text-sm text-neutral-400 text-center">
           Open a folder to browse files or clone a repository.
         </p>
         <button
-          className="px-4 py-2 bg-primary rounded text-white flex items-center"
+          className="px-4 py-2 bg-p1 rounded text-white flex items-center"
           onClick={handleOpenFolder}
         >
           <FolderOpen className="w-4 h-4 mr-2" />
@@ -325,12 +388,30 @@ const FileSystem = ({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div className="h-full w-1/3 overflow-auto bg-primary-sidebar text-neutral-300 text-sm p-2">
+        <div className="h-full overflow-auto bg-primary-sidebar text-neutral-300 text-sm p-2">
           <div className="flex items-center justify-between mb-2 px-2">
             <div className="text-p6 font-semibold">
               {workspace.split(/[\\/]/).pop()}
             </div>
             <div className="flex gap-2">
+              <button
+                className="cursor-pointer"
+                onClick={() => {
+                  setAction("newFile");
+                  setDialogOpen(true);
+                }}
+              >
+                <FilePlus2 className="size-3.5" />
+              </button>
+              <button
+                className="cursor-pointer"
+                onClick={() => {
+                  setAction("newFolder");
+                  setDialogOpen(true);
+                }}
+              >
+                <FolderPlus className="size-4" />
+              </button>
               <button
                 className="text-xs text-neutral-300 hover:underline cursor-pointer"
                 onClick={() => {
@@ -339,13 +420,10 @@ const FileSystem = ({
                   setRoots(null);
                 }}
               >
-                Close Folder
+                <FolderMinus className="size-4" />
               </button>
-              <button
-                className="text-xs text-neutral-300 hover:underline cursor-pointer"
-                onClick={reloadWorkspace}
-              >
-                Reload
+              <button className="cursor-pointer" onClick={reloadWorkspace}>
+                <FolderSync className="size-4" />
               </button>
             </div>
           </div>

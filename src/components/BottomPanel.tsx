@@ -1,72 +1,79 @@
-import { useEffect, useState, useRef } from "react";
+// import { useEffect, useRef } from "react";
+// import { Terminal } from "xterm";
+// import { FitAddon } from "@xterm/addon-fit";
+// import { WebLinksAddon } from "@xterm/addon-web-links";
 
-const BottomPanel = ({
-  setDownOpen,
-}: {
-  setDownOpen: React.Dispatch<React.SetStateAction<boolean>>;
-}) => {
-  const [termId, setTermId] = useState<string | null>(null);
-  const [output, setOutput] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+// export default function BottomPanel({ onClose }: { onClose: () => void }) {
+//   const containerRef = useRef<HTMLDivElement>(null);
+//   const termRef = useRef<Terminal | null>(null);
+//   const fitAddonRef = useRef<FitAddon | null>(null);
 
-  // useEffect(() => {
-  //   (async () => {
-  //     const id = await window.terminalApi.createTerminal();
-  //     setTermId(id);
+//   useEffect(() => {
+//     const term = new Terminal({
+//       theme: { background: "#1e1e1e", foreground: "#cccccc" },
+//       fontFamily: "Consolas, monospace",
+//       fontSize: 14,
+//       cursorBlink: true,
+//     });
 
-  //     window.electronAPI.onTerminalData(({ id: incomingId, data }) => {
-  //       if (incomingId === id) {
-  //         setOutput((prev) => prev + data);
-  //       }
-  //     });
-  //   })();
+//     const fitAddon = new FitAddon();
+//     term.loadAddon(fitAddon);
+//     term.loadAddon(new WebLinksAddon());
 
-  //   return () => {
-  //     if (termId) {
-  //       window.electronAPI.killTerminal(termId);
-  //     }
-  //   };
-  // }, []);
+//     fitAddon.fit();
+//     termRef.current = term;
+//     fitAddonRef.current = fitAddon;
 
-  // const handleInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
-  //   if (e.key === "Enter" && termId) {
-  //     const command = inputRef.current?.value + "\r";
-  //     window.electronAPI.writeTerminal(termId, command);
-  //     if (inputRef.current) inputRef.current.value = "";
-  //   }
-  // };
+//     // Listen to backend output
+//     window.terminalAPI.onData((data) => {
+//       term.write(data);
+//     });
 
+//     // Send user input to backend
+//     term.onData((data) => {
+//       window.terminalAPI.write(data);
+//     });
+
+//     // Resize on panel resize
+//     const resizeObserver = new ResizeObserver(() => {
+//       fitAddon.fit();
+//       window.terminalAPI.resize(term.cols, term.rows);
+//     });
+
+//     if (containerRef.current) {
+//       term.open(containerRef.current);
+//       resizeObserver.observe(containerRef.current);
+//     }
+
+//     return () => {
+//       term.dispose();
+//       resizeObserver.disconnect();
+//     };
+//   }, []);
+
+//   return (
+//     <div className="flex flex-col bg-[#1e1e1e] border-t border-gray-700 h-[300px]">
+//       {/* Header */}
+//       <div className="flex justify-between items-center bg-[#2d2d2d] px-3 py-1 text-sm text-gray-300">
+//         <span>Terminal</span>
+//         <button
+//           onClick={onClose}
+//           className="hover:text-red-400 transition-colors"
+//         >
+//           x
+//         </button>
+//       </div>
+
+//       {/* Terminal */}
+//       <div ref={containerRef} className="flex-1 overflow-hidden" />
+//     </div>
+//   );
+// }
+
+const BottomPanel = () => {
   return (
-    <div>
-      Bottom Panel
-    </div>
-    // <div className="h-1/3 bg-black text-green-200 flex flex-col">
-    //   {/* Header */}
-    //   <div className="flex justify-between items-center bg-neutral-800 text-white px-2 py-1">
-    //     <span>Terminal</span>
-    //     <button
-    //       onClick={() => setDownOpen(false)}
-    //       className="px-2 text-sm bg-red-600 rounded"
-    //     >
-    //       ✕
-    //     </button>
-    //   </div>
+    <div>BottomPanel</div>
+  )
+}
 
-    //   {/* Output */}
-    //   <pre className="flex-1 overflow-y-auto p-2 font-mono text-sm whitespace-pre-wrap">
-    //     {output}
-    //   </pre>
-
-    //   {/* Input */}
-    //   <input
-    //     ref={inputRef}
-    //     type="text"
-    //     className="w-full bg-neutral-900 text-green-200 px-2 py-1 font-mono outline-none"
-    //     placeholder="Type a command..."
-    //     onKeyDown={handleInput}
-    //   />
-    // </div>
-  );
-};
-
-export default BottomPanel;
+export default BottomPanel

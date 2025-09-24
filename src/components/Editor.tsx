@@ -1,55 +1,105 @@
 import { useEffect, useRef } from "react";
 import { EditorState } from "@codemirror/state";
-import { EditorView, basicSetup } from "codemirror";
-import { javascript } from "@codemirror/lang-javascript";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { basicSetup } from "codemirror";
+import { EditorView } from "@codemirror/view";
+import { useEditor } from "./contexts/EditorContext";
+import getLanguageExtension from ".././utils/edfunc";
+export default function Editor() {
+  const { openFiles, setOpenFiles, activePath, setActivePath } = useEditor();
+  const viewRefs = useRef<Record<string, EditorView>>({});
 
-export default function Editor({
-  file,
-  onSave,
-}: {
-  file: { path: string; content: string } | null;
-  onSave: (newContent: string) => void;
-}) {
-  const editorRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef<EditorView | null>(null);
-  useEffect(() => {
-    if (!editorRef.current) return;
-
-    const startState = EditorState.create({
-      doc: "//start your code here",
-      extensions: [basicSetup, javascript()],
+  // Create editor when container mounts
+  const assignRef = (filePath: string) => (el: HTMLDivElement | null) => {
+    if (!el || viewRefs.current[filePath]) return;
+    const file = openFiles.find((f) => f.path === filePath);
+    if (!file) return;
+    const state = EditorState.create({
+      doc: file.content,
+      extensions: [basicSetup, oneDark, getLanguageExtension(file.path)],
     });
-    viewRef.current = new EditorView({ state: startState, parent: editorRef.current });
 
-    return () => viewRef.current?.destroy();
-  }, []);
+    viewRefs.current[filePath] = new EditorView({ state, parent: el });
+  };
+  const onSave = (filePath: string, newContent: string) => {
+    const file = openFiles.find((f) => f.path === filePath);
+    if (!file) return;
+    // save to disk
+    window.electronAPI.writeFile(file.path, newContent);
 
-  useEffect(() => {
-    if (file && viewRef.current) {
-      const state = EditorState.create({
-        doc: file.content,
-        extensions: [basicSetup, javascript()],
-      });
-      viewRef.current.setState(state);
+    // update state
+    setOpenFiles((prev) =>
+      prev.map((f) => (f.path === filePath ? { ...f, content: newContent } : f))
+    );
+  };
+
+  const onClose = (filePath: string) => {
+    setOpenFiles((prev) => prev.filter((f) => f.path !== filePath));
+  };
+
+  const handleCloseTab = (filePath: string) => {
+    const view = viewRefs.current[filePath];
+    if (view) {
+      onSave(filePath, view.state.doc.toString());
+      view.destroy();
+      delete viewRefs.current[filePath];
     }
-  }, [file]);
+    onClose(filePath);
+
+    const remaining = openFiles.filter((f) => f.path !== filePath);
+    if (remaining.length > 0) setActivePath(remaining[0].path);
+    else setActivePath(""); // no tabs left
+  };
+
+  // Update active tab if the current active file is closed externally
+  useEffect(() => {
+    if (!openFiles.find((f) => f.path === activePath) && openFiles.length > 0) {
+      setActivePath(openFiles[0].path);
+    }
+  }, [openFiles, activePath]);
 
   return (
-    <div className="h-2/3 w-full flex flex-col bg-primary-sidebar">
-      <div className="flex justify-between text-neutral-300 px-2 py-1 text-xs">
-        <span>{file?.path.split('\\').pop() ?? "No file"}</span>
-        {file && (
-          <button
-            onClick={() => {
-              const newContent = viewRef.current?.state.doc.toString() ?? "";
-              onSave(newContent);
-            }}
+    <div className="w-full h-full flex flex-col bg-primary-sidebar">
+      {/* Tabs */}
+      <div className="flex border-b border-gray-700 text-neutral-300 text-xs">
+        {openFiles.map((file) => (
+          <div
+            key={file.path}
+            className={`flex items-center pl-3 pr-2 py-2 cursor-pointer ${
+              file.path === activePath
+                ? "bg-slate-700 font-semibold"
+                : "hover:bg-gray-700"
+            }`}
+            onClick={() => setActivePath(file.path)}
           >
-            Save
-          </button>
-        )}
+            <span className="truncate max-w-xs">
+              {file.path.split("\\").pop()}
+            </span>
+            <button
+              className="ml-2 px-1.5 py-1 text-md hover:bg-slate-600 cursor-pointer font-bold"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCloseTab(file.path);
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
       </div>
-      <div ref={editorRef} className="flex-1 overflow-auto" />
+
+      {/* Editors */}
+      <div className="flex-1 relative">
+        {openFiles.map((file) => (
+          <div
+            key={file.path}
+            ref={assignRef(file.path)}
+            className={`absolute inset-0 ${
+              file.path === activePath ? "block" : "hidden"
+            }`}
+          />
+        ))}
+      </div>
     </div>
   );
 }
