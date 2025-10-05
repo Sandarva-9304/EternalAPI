@@ -1,10 +1,10 @@
 import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import path from "path";
 import fs from "fs/promises";
-import fssync from "fs";
-// import { spawn } from "node_pty";
+import fssync, { readdirSync, statSync } from "fs";
 import { fileURLToPath } from "url";
-import os from "os";
+import { spawn } from "child_process";
+// import os from "os";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +14,7 @@ const windows = new Set(); // track all windows
 const watchers = new Map();
 // let shell;
 
-const terminals = {};
+// const terminals = {};
 // Helper to create a new BrowserWindow
 function createWindow() {
   const win = new BrowserWindow({
@@ -34,6 +34,13 @@ function createWindow() {
   }
   win.on("closed", () => {
     windows.delete(win);
+  });
+  // Attach maximize/unmaximize events directly to this window
+  win.on("maximize", () => {
+    win.webContents.send("window:onmaximize");
+  });
+  win.on("unmaximize", () => {
+    win.webContents.send("window:onunmaximize");
   });
 
   windows.add(win);
@@ -90,15 +97,22 @@ app.whenReady().then(() => {
 
   ipcMain.on("window:maximize", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (win) {
-      if (win.isMaximized()) win.unmaximize();
-      else win.maximize();
-    }
+    if (win && !win.isMaximized()) win.maximize();
+  });
+
+  ipcMain.on("window:unmaximize", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && win.isMaximized()) win.unmaximize();
   });
 
   ipcMain.on("window:close", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) win.close();
+  });
+
+  ipcMain.handle("window:isMaximized", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return win ? win.isMaximized() : false;
   });
 
   ipcMain.handle("window:new", () => createWindow());
@@ -151,7 +165,7 @@ app.whenReady().then(() => {
 
   // Watch folder
   ipcMain.handle("fs:watch", (_, dirPath) => {
-    try{
+    try {
       if (watchers.has(dirPath)) return;
       const watcher = fssync.watch(
         dirPath,
@@ -161,7 +175,7 @@ app.whenReady().then(() => {
         }
       );
       watchers.set(dirPath, watcher);
-    }catch(e){
+    } catch (e) {
       console.log(e);
     }
   });
@@ -172,59 +186,126 @@ app.whenReady().then(() => {
       watchers.delete(dirPath);
     }
   });
-  // Git
+
   ipcMain.handle("git:clone", async (_, repoUrl, targetDir) => {
     return new Promise((resolve, reject) => {
+      if (!repoUrl || !targetDir) {
+        return reject(
+          new Error("Repository URL and target directory are required")
+        );
+      }
       const proc = spawn("git", ["clone", repoUrl, targetDir]);
-      proc.on("close", (code) => {
-        if (code === 0) resolve(true);
-        else reject(new Error(`git clone failed with code ${code}`));
+
+      let stderr = "";
+
+      proc.stderr.on("data", (data) => {
+        stderr += data.toString();
       });
-    });
-  });
-  
 
-ipcMain.handle(
-  "search-in-workspace",
-  async (
-    _e,
-    workspace,
-    query,
-    options = { matchCase: false, wholeWord: false, regex: false }
-  ) => {
-    if (!query) return [];
-
-    const files = getAllFiles(workspace);
-    const results = [];
-
-    const flags = options.matchCase ? "g" : "gi";
-    let pattern;
-    if (options.regex) {
-      pattern = new RegExp(query, flags);
-    } else {
-      const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const word = options.wholeWord ? `\\b${escaped}\\b` : escaped;
-      pattern = new RegExp(word, flags);
-    }
-
-    for (const filePath of files) {
-      const content = await fs.promises.readFile(filePath, "utf8");
-      const lines = content.split("\n");
-      const matches = [];
-
-      lines.forEach((line, idx) => {
-        if (pattern.test(line)) {
-          matches.push({ line: idx + 1, text: line.trim() });
+      proc.on("close", (code) => {
+        if (code === 0) {
+          resolve(true);
+        } else {
+          reject(new Error(`git clone failed with code ${code}\n${stderr}`));
         }
       });
 
-      if (matches.length > 0) {
-        results.push({ filePath, matches });
+      proc.on("error", (err) => {
+        reject(new Error(`Failed to start git process: ${err.message}`));
+      });
+    });
+  });
+
+  ipcMain.handle(
+    "search-in-workspace",
+    async (
+      _e,
+      workspace,
+      query,
+      options = { matchCase: false, wholeWord: false, regex: false }
+    ) => {
+      if (!query) return [];
+
+      const files = await getAllFiles(workspace);
+      const results = [];
+
+      const flags = options.matchCase ? "" : "i"; // remove 'g'
+      let pattern;
+
+      if (options.regex) {
+        pattern = new RegExp(query, flags);
+      } else {
+        const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const word = options.wholeWord ? `\\b${escaped}\\b` : escaped;
+        pattern = new RegExp(word, flags);
       }
+
+      for (const filePath of files) {
+        const content = await fs.readFile(filePath, "utf8");
+        const lines = content.split(/\r?\n/);
+        const matches = [];
+
+        lines.forEach((line, idx) => {
+          if (pattern.test(line)) {
+            matches.push({ line: idx + 1, text: line }); // keep original line
+          }
+        });
+
+        if (matches.length > 0) {
+          results.push({ filePath, matches });
+        }
+      }
+
+      return results;
     }
-    return results;
-  }
-);
+  );
+  ipcMain.handle(
+    "replace-in-workspace",
+    async (
+      _e,
+      query,
+      results,
+      replaceText,
+      options = { replaceNext: true, replaceAll: false }
+    ) => {
+      if (!results || !query) return { replaced: 0 };
+
+      const targetFiles = results.map((r) => r.filePath);
+      let replacedCount = 0;
+
+      for (const filePath of targetFiles) {
+        try {
+          let content = await fs.readFile(filePath, "utf8");
+
+          if (options.replaceNext) {
+            const index = content.indexOf(query);
+            if (index !== -1) {
+              content =
+                content.slice(0, index) +
+                replaceText +
+                content.slice(index + query.length);
+              replacedCount++;
+              await fs.writeFile(filePath, content, "utf8");
+              break; // stop after first replacement
+            }
+          }
+
+          if (options.replaceAll) {
+            const occurrences = content.split(query).length - 1;
+            if (occurrences > 0) {
+              content = content.split(query).join(replaceText);
+              replacedCount += occurrences;
+              await fs.writeFile(filePath, content, "utf8");
+            }
+          }
+        } catch (err) {
+          console.error(`Error processing file ${filePath}:`, err);
+        }
+      }
+
+      return { replaced: replacedCount };
+    }
+  );
 });
 
 // macOS activate
@@ -237,17 +318,18 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-function getAllFiles(dir, extFilter = [".ts", ".tsx", ".js", ".json"]) {
+async function getAllFiles(dir) {
   let results = [];
-  const list = fs.readdirSync(dir);
-  list.forEach((file) => {
-    const filePath = path.join(dir, file);
-    const stat = fs.statSync(filePath);
-    if (stat && stat.isDirectory()) {
-      results = results.concat(getAllFiles(filePath, extFilter));
-    } else if (extFilter.includes(path.extname(filePath))) {
+  const list = await fs.readdir(dir, { withFileTypes: true });
+
+  for (const dirent of list) {
+    const filePath = path.join(dir, dirent.name);
+
+    if (dirent.isDirectory()) {
+      results = results.concat(await getAllFiles(filePath));
+    } else {
       results.push(filePath);
     }
-  });
+  }
   return results;
 }

@@ -3,22 +3,34 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("electronAPI", {
   minimize: () => ipcRenderer.send("window:minimize"),
   maximize: () => ipcRenderer.send("window:maximize"),
+  unmaximize: () => ipcRenderer.send("window:unmaximize"),
   close: () => ipcRenderer.send("window:close"),
+  isMaximized: () => ipcRenderer.invoke("window:isMaximized"),
+  onMaximize: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("window:onmaximize", listener);
+    return () => ipcRenderer.removeListener("window:onmaximize", listener);
+  },
+  onUnmaximize: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("window:onunmaximize", listener);
+    return () => ipcRenderer.removeListener("window:onunmaximize", listener);
+  },
   searchInWorkspace: (
     workspace,
     query,
     options = { matchCase: false, wholeWord: false, regex: false }
   ) => ipcRenderer.invoke("search-in-workspace", workspace, query, options),
   replaceInWorkspace: (
-    workspace,
     query,
+    results,
     replaceText,
-    options = { replaceNext: false, replaceAll: false }
+    options = { replaceNext: true, replaceAll: false }
   ) =>
     ipcRenderer.invoke(
       "replace-in-workspace",
-      workspace,
       query,
+      results,
       replaceText,
       options
     ),
@@ -35,6 +47,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   unwatch: (dirPath) => ipcRenderer.invoke("fs:unwatch", dirPath),
   onFsChanged: (callback) =>
     ipcRenderer.on("fs:changed", (_, data) => callback(data)),
+  offFsChanged: (callback) => ipcRenderer.removeListener("fs:changed", callback),
 
   delete: (filePath) => ipcRenderer.invoke("fs:delete", filePath),
   rename: (oldPath, newPath) =>
@@ -42,7 +55,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   newFile: (filePath) => ipcRenderer.invoke("fs:newFile", filePath),
   newFolder: (dirPath) => ipcRenderer.invoke("fs:newFolder", dirPath),
 
-  cloneRepo: (repoUrl, targetDir) =>
+  gitClone: (repoUrl, targetDir) =>
     ipcRenderer.invoke("git:clone", repoUrl, targetDir),
 });
 

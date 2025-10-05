@@ -5,18 +5,30 @@
 
 @theme {
   --color-p1: #2b4ea2;
-  --color-primary-sidebar: #1A2130;
+  --color-primary-sidebar: #1a2130;
   --color-p5: hsl(240, 5.9%, 10%);
   --color-p6: hsl(0, 0%, 98%);
-}
-
-@layer base {
-  body {
-    @apply h-screen w-screen overflow-hidden;
-  }
+  --color-md: #2d2f3f;
 }
 
 @layer utilities {
+  .scrollbar::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  .scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--color-p6);
+    border-radius: 9999px;
+    transition: background-color 0.2s ease;
+  }
+
+  .scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(160, 160, 160, 0.7);
+  }
 }
 
 @theme inline {
@@ -131,6 +143,6 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground h-screen w-screen overflow-hidden;
   }
 }

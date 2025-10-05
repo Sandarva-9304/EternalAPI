@@ -14,9 +14,8 @@ import {
 } from "lucide-react";
 
 export default function SearchPanel() {
-  const { workspace, openFiles, setOpenFiles, setActivePath } = useEditor();
-
-  const [query, setQuery] = useState("");
+  const { workspace, openFiles, setOpenFiles, setActivePath, query, setQuery } =
+    useEditor();
   const [replaceText, setReplaceText] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>(
@@ -34,18 +33,19 @@ export default function SearchPanel() {
       setResults([]);
       return;
     }
-    // TODO: Replace with electronAPI search
-     window.electronAPI.searchInWorkspace(workspace, query, {
-      matchCase,
-      wholeWord: matchWhole,
-      regex: useRegex,
-    })
-    .then((res: SearchResult[]) => {
-      setResults(res);
-      setExpandedFiles(
-        Object.fromEntries(res.map((r: any) => [r.filePath, true]))
-      );
-    });
+    window.electronAPI
+      .searchInWorkspace(workspace, query, {
+        matchCase,
+        wholeWord: matchWhole,
+        regex: useRegex,
+      })
+      .then((res: SearchResult[]) => {
+        setResults(res);
+        console.log(res);
+        setExpandedFiles(
+          Object.fromEntries(res.map((r: any) => [r.filePath, true]))
+        );
+      });
   }, [query, matchCase, matchWhole, useRegex, workspace]);
 
   const toggleFile = (filePath: string) => {
@@ -55,14 +55,26 @@ export default function SearchPanel() {
     }));
   };
 
-  const openMatch = (filePath: string) => {
+  const openMatch = (filePath: string, line: number) => {
     if (!openFiles.find((f) => f.path === filePath)) {
       window.electronAPI.readFile(filePath).then((content: string) => {
         setOpenFiles((prev) => [...prev, { path: filePath, content } as File]);
         setActivePath(filePath);
+        if (line !== undefined) {
+          setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent("scroll-to-line", { detail: { filePath, line, query } })
+            );
+          }, 100); // wait for render
+        }
       });
     } else {
       setActivePath(filePath);
+      if (line !== undefined) {
+        window.dispatchEvent(
+          new CustomEvent("scroll-to-line", { detail: { filePath, line } })
+        );
+      }
     }
   };
 
@@ -78,11 +90,28 @@ export default function SearchPanel() {
   };
 
   const replaceNext = () => {
-    alert(`Replace next "${query}" with "${replaceText}"`);
+    if (!query || !workspace) return;
+    window.electronAPI
+      .replaceInWorkspace(query, results, replaceText, {
+        replaceNext: true,
+        replaceAll: false,
+      })
+      .then(() => {
+        setResults(results.slice(1));
+      });
   };
 
   const replaceAll = () => {
-    alert(`Replace all "${query}" with "${replaceText}"`);
+    if (!query || !workspace) return;
+    window.electronAPI
+      .replaceInWorkspace(query, results, replaceText, {
+        replaceNext: false,
+        replaceAll: true,
+      })
+      .then((res) => {
+        console.log("replaced", res);
+        setResults([]);
+      });
   };
 
   return (
@@ -182,7 +211,7 @@ export default function SearchPanel() {
               ) : (
                 <ChevronRight size={14} className="mr-1" />
               )}
-              {file.filePath.replace(workspace + "/", "")}
+              {file.filePath.replace(workspace + "", "").slice(1)}
             </div>
             {expandedFiles[file.filePath] && (
               <ul className="ml-5 mt-1 space-y-1">
@@ -190,7 +219,7 @@ export default function SearchPanel() {
                   <li
                     key={i}
                     className="cursor-pointer hover:bg-neutral-700 px-2 py-1 rounded"
-                    onClick={() => openMatch(file.filePath)}
+                    onClick={() => openMatch(file.filePath, m.line)}
                   >
                     <span className="text-neutral-400">Line {m.line}:</span>{" "}
                     <span className="text-neutral-200">{m.text}</span>

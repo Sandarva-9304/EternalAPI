@@ -3,7 +3,7 @@ export interface IUser extends Document {
   uid: string;
   username: string;
   avatar: string;
-  friends?: string[];
+  friends?: Object[];
   friendrequests?: Object[];
   groups?: Object[];
 }
@@ -12,7 +12,7 @@ const UserSchema: Schema = new Schema<IUser>(
     uid: { type: String, required: true, unique: true },
     username: { type: String, required: true },
     avatar: { type: String, required: true },
-    friends: [{ type: String, required: false }],
+    friends: [{ type: Object, required: false }],
     friendrequests: [{ type: Object, required: false }],
     groups: [{ type: Object, required: false }],
   },

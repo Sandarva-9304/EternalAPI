@@ -3,7 +3,7 @@ import SearchPanel from "./Search";
 const LeftPanel = ({
   content,
 }: {
-  content: "files" | "search" | "git" | "db" | null;
+  content: "files" | "search" | "git" | "db"| "music" | null;
 }) => {
   switch (content) {
     case "files":
@@ -14,6 +14,8 @@ const LeftPanel = ({
       return <div className="">Git</div>;
     case "db":
       return <div className="">Database</div>;
+    case "music":
+      return <div className="">Music</div>;
     default:
       return null;
   }

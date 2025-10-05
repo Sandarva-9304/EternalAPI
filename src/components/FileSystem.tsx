@@ -1,6 +1,9 @@
 // src/components/FileSystem.tsx
 import * as React from "react";
 import { useEffect, useState } from "react";
+import { useAuth } from "@clerk/clerk-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import {
   FsNode,
   joinPath,
@@ -34,19 +37,23 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useEditor } from "./contexts/EditorContext";
 const FileSystem = () => {
-  const { workspace, setWorkspace, setActivePath, openFiles, setOpenFiles } =
-    useEditor();
+  const { isSignedIn, getToken } = useAuth();
+  const { workspace, setWorkspace, setActivePath, setOpenFiles } = useEditor();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [repos, setRepos] = useState<GitRepo[] | null>(null);
+  const [cloneMethod, setCloneMethod] = useState<"github" | "link">("github");
   const [roots, setRoots] = useState<FsNode[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [repoUrl, setRepoUrl] = useState("");
   const [targetNode, setTargetNode] = useState<FsNode | null>(null);
   const [action, setAction] = useState<
-    null | "newFile" | "newFolder" | "rename" | "delete"
+    null | "newFile" | "newFolder" | "rename" | "delete" | "clone"
   >(null);
   const [value, setValue] = useState("");
 
@@ -66,21 +73,52 @@ const FileSystem = () => {
   }, [workspace]);
 
   useEffect(() => {
-    const handleChange = ({ event, filename, dirPath }: any) => {
-      // simplest option: just reload the whole tree
-      reloadWorkspace();
+    const handleChange = async ({ event, filename, dirPath }: any) => {
+      if (!dirPath) return;
 
-      // optional: log/debug
       console.log("FS changed:", event, filename, dirPath);
+
+      // Only refresh the subtree that changed, not the whole workspace
+      setRoots((prev) => {
+        if (!prev) return prev;
+        refreshSubtree(prev, dirPath).then(setRoots);
+        return prev;
+      });
     };
 
     window.electronAPI.onFsChanged(handleChange);
 
     return () => {
-      // cleanup listener when component unmounts
       window.electronAPI.offFsChanged?.(handleChange);
     };
-  }, [workspace]);
+  }, [workspace, roots]);
+
+  const refreshSubtree = async (
+    nodes: FsNode[],
+    dirPath: string
+  ): Promise<FsNode[]> => {
+    return Promise.all(
+      nodes.map(async (node) => {
+        if (node.path === dirPath && node.isDirectory && node.expanded) {
+          // re-read only this folder
+          const entries = await window.electronAPI.readDir(dirPath);
+          const children: FsNode[] = entries.map((e) => ({
+            name: e.name,
+            path: e.path,
+            isDirectory: e.isDirectory,
+          }));
+          return { ...node, children: sortNodes(children) };
+        }
+        if (node.children) {
+          return {
+            ...node,
+            children: await refreshSubtree(node.children, dirPath),
+          };
+        }
+        return node;
+      })
+    );
+  };
 
   // helpers inside FileSystem.tsx (or move to fsfunc.ts)
   const preserveExpanded = (nodes: FsNode[]): Record<string, boolean> => {
@@ -251,6 +289,44 @@ const FileSystem = () => {
     setRoots(updated);
   };
 
+  const handleClone = async (clone_url: string) => {
+    let repoName = clone_url.split("/").pop();
+    if (repoName?.endsWith(".git")) repoName = repoName.slice(0, -4);
+    let targetDir = await window.electronAPI.openFolder();
+    if (!targetDir) return;
+    if (repoName) {
+      targetDir = joinPath(targetDir, repoName);
+    }
+    await window.electronAPI.gitClone(clone_url, targetDir);
+    setWorkspace(targetDir);
+    localStorage.setItem("workspacePath", targetDir);
+    setDialogOpen(false);
+    setRepoUrl("");
+    setAction(null);
+  };
+
+  const getUserRepos = async () => {
+    if (!isSignedIn) return;
+    const token = await getToken();
+    if (!token) return;
+    const res = await fetch("http://localhost:3000/api/users/me", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`API error: ${res.status} - ${text}`);
+    }
+    const data = await res.json();
+    console.log(data);
+    const res2 = await fetch(
+      `https://api.github.com/users/${data.user.username}/repos`
+    );
+    const r = await res2.json();
+    console.log(r);
+    setRepos(r);
+  };
   // renderers
   const TreeItem: React.FC<{ node: FsNode; level?: number }> = ({
     node,
@@ -358,30 +434,117 @@ const FileSystem = () => {
   // UI
   if (!workspace) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-4 bg-primary-sidebar text-neutral-300 p-4">
-        <h3 className="text-lg font-semibold text-p6">No folder opened</h3>
-        <p className="text-sm text-neutral-400 text-center">
-          Open a folder to browse files or clone a repository.
-        </p>
-        <button
-          className="px-4 py-2 bg-p1 rounded text-white flex items-center"
-          onClick={handleOpenFolder}
-        >
-          <FolderOpen className="w-4 h-4 mr-2" />
-          Open Folder
-        </button>
-        <button
-          className="px-4 py-2 bg-green-600 rounded text-white flex items-center"
-          onClick={() =>
-            alert(
-              "Clone not implemented; implement on backend via git or shell."
-            )
-          }
-        >
-          <GitBranch className="w-4 h-4 mr-2" /> Clone Repository
-        </button>
-        {error && <div className="text-sm text-red-500 mt-2">{error}</div>}
-      </div>
+      <>
+        <div className="h-full flex flex-col items-center justify-center gap-4 bg-primary-sidebar text-neutral-300 p-4">
+          <h3 className="text-lg font-semibold text-p6">No folder opened</h3>
+          <p className="text-sm text-neutral-400 text-center">
+            Open a folder to browse files or clone a repository.
+          </p>
+          <button
+            className="px-4 py-2 bg-p1 rounded text-white flex items-center cursor-pointer"
+            onClick={handleOpenFolder}
+          >
+            <FolderOpen className="w-4 h-4 mr-2" />
+            Open Folder
+          </button>
+          <button
+            className="px-4 py-2 bg-green-600 rounded text-white flex items-center cursor-pointer"
+            onClick={() => {
+              setAction("clone");
+              getUserRepos();
+              setDialogOpen(true);
+            }}
+          >
+            <GitBranch className="w-4 h-4 mr-2" /> Clone Repository
+          </button>
+          {error && <div className="text-sm text-red-500 mt-2">{error}</div>}
+        </div>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="text-neutral-700 flex flex-col justify-between">
+            <DialogHeader>
+              <DialogTitle>Clone Repository</DialogTitle>
+            </DialogHeader>
+
+            <Tabs
+              value={cloneMethod}
+              onValueChange={(val) => setCloneMethod(val as "github" | "link")}
+            >
+              <TabsList className="w-full grid grid-cols-2 mb-4">
+                <TabsTrigger value="github">GitHub</TabsTrigger>
+                <TabsTrigger value="link">From URL</TabsTrigger>
+              </TabsList>
+
+              {/* GitHub Repo List */}
+              <TabsContent
+                value="github"
+                className="flex flex-col justify-between max-h-46 overflow-y-scroll"
+              >
+                {repos?.length ? (
+                  <RadioGroup
+                    value={repoUrl}
+                    onValueChange={(val) => {
+                      setRepoUrl(val);
+                      setErrorMessage(null);
+                    }}
+                    className="flex flex-col gap-2"
+                  >
+                    {repos.map((repo) => (
+                      <Label
+                        key={repo.id}
+                        htmlFor={`repo-${repo.id}`}
+                        className={`flex items-center justify-between w-full p-3 rounded-md border cursor-pointer transition-colors ${
+                          repoUrl === repo.clone_url
+                            ? "border-blue-500 bg-blue-500/10"
+                            : "border-neutral-700 hover:border-neutral-500"
+                        }`}
+                      >
+                        <span>{repo.name}</span>
+                        {/* Hidden radio – still accessible */}
+                        <RadioGroupItem
+                          value={repo.clone_url}
+                          id={`repo-${repo.id}`}
+                          className="hidden"
+                        />
+                      </Label>
+                    ))}
+                  </RadioGroup>
+                ) : (
+                  <p className="text-sm text-neutral-400">
+                    No repositories found.
+                  </p>
+                )}
+              </TabsContent>
+
+              {/* Clone via Link */}
+              <TabsContent value="link">
+                <Input
+                  value={repoUrl}
+                  onChange={(e) => {
+                    setRepoUrl(e.target.value);
+                    setErrorMessage(null);
+                  }}
+                  placeholder="Enter repository URL"
+                  autoFocus
+                />
+                {errorMessage && (
+                  <div className="text-sm text-red-500 mt-2">
+                    {errorMessage}
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={() => handleClone(repoUrl)} disabled={!repoUrl}>
+                Clone
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
     );
   }
 
@@ -492,7 +655,7 @@ const FileSystem = () => {
               value={value}
               onChange={(e) => {
                 setValue(e.target.value);
-                setErrorMessage(null); // clear error on change
+                setErrorMessage(null);
               }}
               placeholder="Enter name"
               autoFocus

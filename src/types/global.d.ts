@@ -6,17 +6,67 @@ declare global {
     content: string;
   }
   interface SearchResult {
-  filePath: string;
-  matches: { line: number; text: string }[];
-}
+    filePath: string;
+    matches: { line: number; text: string }[];
+  }
+  type Friend = {
+    username: string;
+    avatar: string;
+  };
+  type Message = {
+    id: string;
+    from: string;
+    to?: string;
+    text: string;
+    timestamp: Date;
+    room?: string;
+    chatKey: string;
+  };
+  type FriendRequest = {
+    to: string;
+    from: string;
+    date: Date;
+  };
+
+  type Group = {
+    room: string;
+    roomId: string;
+    imageUrl: string;
+  };
+
+  type UserData = {
+    uid: string;
+    username: string;
+    avatar: string;
+    friends?: Friend[];
+    friendrequests?: FriendRequest[];
+    groups?: Group[];
+  };
+  interface GitRepo {
+    id: string;
+    name: string;
+    clone_url: string;
+  }
   interface Window {
     electronAPI: {
       minimize: () => void;
       maximize: () => void;
+      unmaximize: () => void;
       close: () => void;
-
-      searchInWorkspace: (query: string, workspace: string, options?: { matchCase: boolean, wholeWord: boolean, regex: boolean }) => Promise<SearchResult[]>;
-
+      isMaximized: () => Promise<boolean>;
+      onMaximize: (callback: () => void) => () => void;
+      onUnmaximize: (callback: () => void) => () => void;
+      searchInWorkspace: (
+        query: string,
+        workspace: string,
+        options?: { matchCase: boolean; wholeWord: boolean; regex: boolean }
+      ) => Promise<SearchResult[]>;
+      replaceInWorkspace: (
+        query: string,
+        results: SearchResult[],
+        replaceText: string,
+        options?: { replaceNext: boolean; replaceAll: boolean }
+      ) => Promise<{ replaced: number }>;
       newWindow: () => void;
 
       openFolder: () => Promise<string | null>;
@@ -48,6 +98,8 @@ declare global {
           dirPath: string;
         }) => void
       ) => void;
+
+      gitClone: (repoUrl: string, targetDir: string) => Promise<void>;
     };
     chatAPI: {
       register: (username: string) => void;

@@ -16,6 +16,15 @@ import {
 import dotenv from "dotenv";
 dotenv.config();
 
+type Message = {
+  id: string;
+  from: string;
+  to?: string;
+  text: string;
+  timestamp: Date;
+  room?: string;
+  chatKey: string;
+};
 const app = express();
 app.use(express.json());
 app.use(cors({ origin: "*" }));
@@ -35,31 +44,25 @@ const io = new Server(httpServer, {
 const users: Record<string, string> = {}; // username -> socketId
 const sockets: Record<string, string> = {}; // socketId -> User
 const MESSAGE_LIMIT = 15;
-const messages: Record<string, any[]> = {};
+// const messages: Record<string, any[]> = {};
 
 io.on("connection", (socket: Socket) => {
   console.log("🔗 User connected:", socket.id);
 
   // Register a user with a username
   socket.on("register", async (username: string) => {
+    if (users[username]) return;
     users[username] = socket.id;
     sockets[socket.id] = username;
     console.log(`${username} registered with id ${socket.id}`);
-    // const rooms = await RoomModel.find({ participants: username });
-    // for (const room of rooms) {
-    //   const roomId=String(room._id);
-    //   const msgs = await redis.lrange(roomId, -MESSAGE_LIMIT, -1);
-    //   for(const msg of msgs) io.to(roomId).emit("roomMessage", msg);
-    //   messages[roomId]= msgs;
-    // }
-    // console.log(messages);
     const count = await redis.llen(username.concat(":pending"));
-    const pendingMessages: any = await redis.lpop(
+    const pendingMessages = await redis.lrange(
       username.concat(":pending"),
-      count
+      -count,
+      -1
     );
     for (const message of pendingMessages) {
-      io.to(socket.id).emit("privateMessage", message);
+      io.to(socket.id).emit("pendingMessage", message);
     }
   });
 
@@ -155,11 +158,6 @@ io.on("connection", (socket: Socket) => {
       socket.join(roomId);
       const username = sockets[socket.id] ?? "Unknown";
       console.log(`${username} joined room: ${room}`);
-      // io.to(roomId).emit("roomMessage", {
-      //   from: "system",
-      //   text: `${username} joined the room.`,
-      //   room,
-      // });
     }
   );
 
@@ -194,50 +192,95 @@ io.on("connection", (socket: Socket) => {
       await redis.rpush(chatKey, message);
       await redis.ltrim(chatKey, -MESSAGE_LIMIT, -1);
       await MessageModel.create(message);
-      io.to(roomId).emit("roomMessage", message);
+      const group = await RoomModel.findOne({ roomId });
+      if (!group) return;
+      for (const participant of group.participants) {
+        const toSocketId = users[participant];
+        if (!toSocketId) {
+          await redis.rpush(participant.concat(":pending"), message);
+        }
+      }
+      io.to(roomId).except(socket.id).emit("roomMessage", message);
       console.log(`👥 [${room}] ${from}: ${text}`);
     }
   );
-
-  // Call signaling messages: offer/answer/ice
-  // Forward an SDP offer to callee
-  socket.on("offer", ({ to, offer, from }: { to: string; offer: any; from: string }) => {
-    console.log("offer-hit", to, from);
-    const toId = users[to];
-    console.log(toId);
-    if (toId) {
-      io.to(toId).emit("offer", { from, offer });
+  socket.on(
+    "removePending",
+    async ({ username, chatKey }: { username: string; chatKey: string }) => {
+      const listKey = `${username}:pending`;
+      // Get all pending messages
+      const pendingMessages = (await redis.lrange(listKey, 0, -1)) as Message[];
+      console.log(pendingMessages);
+      // Filter out ones that match chatKey
+      const kept = pendingMessages.filter((msg: Message) => {
+        return msg.chatKey !== chatKey;
+      });
+      // Replace list with filtered ones
+      await redis.del(listKey);
+      if (kept.length > 0) {
+        await redis.rpush(listKey, ...kept);
+      }
     }
-  });
+  );
+
+  socket.on(
+    "offer",
+    ({ to, offer, from, callType }: { to: string; offer: any; from: string; callType: boolean }) => {
+      console.log("offer-hit", to, from, callType);
+      const toId = users[to];
+      console.log(toId);
+      if (toId) {
+        io.to(toId).emit("offer", { from, offer, callType });
+      }
+    }
+  );
 
   // Forward an answer to the caller
   socket.on("answer", ({ to, answer }: { to: string; answer: any }) => {
     const toId = users[to];
-    console.log('answer hit', to, toId);
+    console.log("answer hit", to, toId);
     if (toId) {
       io.to(toId).emit("answer", { answer });
     }
   });
 
   // Forward ICE candidates (both ways)
-  socket.on("ice-candidate", ({ to, candidate }: { to: string; candidate: any }) => {
-    console.log("ice-candidate hit", to);
-    const toId = users[to];
-    console.log(toId);
-    if (toId) {
-      io.to(toId).emit("ice-candidate", { candidate });
+  socket.on(
+    "ice-candidate",
+    ({ to, candidate }: { to: string; candidate: any }) => {
+      const toId = users[to];
+      if (toId) {
+        io.to(toId).emit("ice-candidate", { candidate });
+      }
     }
-  });
+  );
+  socket.on("call-rejected", ({ from }: { from: string }) => {
+    const toId = users[from];
+    if (toId) {
+      io.to(toId).emit("call-rejected");
+    }
+  })
+  socket.on("hangup", ({ to }: { to: string }) => {
+    const toId = users[to];
+    if (toId) {
+      io.to(toId).emit("hangup");
+    }
+  })
+  socket.on("call-accepted", ({ from }: { from: string }) => {
+    const toId = users[from];
+    if (toId) {
+      io.to(toId).emit("call-accepted");
+    }
+  })
 
-  
   // Handle disconnect
   socket.on("disconnect", () => {
     const user = sockets[socket.id];
     if (user) {
+      delete users[user];
+      delete sockets[socket.id];
       console.log(`${user} disconnected`);
       console.log(users);
-      // delete users[user.username];
-      // delete sockets[socket.id];
     }
   });
 });
@@ -264,7 +307,6 @@ const syncUser = async (
       },
       { upsert: true, new: true }
     );
-
     (req as any).user = mongoUser;
     next();
   } catch (err) {
@@ -292,7 +334,9 @@ app.put("/api/friends/add", requireAuth(), async (req, res) => {
     return res
       .status(400)
       .json({ message: "Friend request already sent to user" });
-  user2.friendrequests?.push({ from, date: new Date().toISOString() });
+  user1.friendrequests?.push({ from, to, date: new Date() });
+  user2.friendrequests?.push({ from, to, date: new Date() });
+  await user1.save();
   await user2.save();
   res.status(200).json({ message: "Friend request sent to", to });
 });
@@ -300,27 +344,27 @@ app.put("/api/friends/add", requireAuth(), async (req, res) => {
 app.put("/api/friends/handle", requireAuth(), async (req, res) => {
   console.log("handle-hit");
   const { from, to, accept } = req.body;
+  const user1 = await UserModel.findOne({ username: from });
+  const user2 = await UserModel.findOne({ username: to });
+  if (!user1 || !user2)
+    return res.status(404).json({ message: "Unsuccessful request" });
   if (accept) {
-    const user1 = await UserModel.findOneAndUpdate(
-      { username: from },
-      { $push: { friends: to } }
-    );
-    const user2 = await UserModel.findOneAndUpdate(
-      { username: to },
-      { $push: { friends: from }, $pull: { friendrequests: { from: from } } }
-    );
-    if (!user1 || !user2)
-      return res.status(404).json({ message: "Unsuccessful request" });
+    user1.friends?.push({ username: to, avatar: user2.avatar });
+    user2.friends?.push({ username: from, avatar: user1.avatar });
     res.status(200).json({ message: "Friend request accepted", to });
   } else {
-    const user = await UserModel.findOneAndUpdate(
-      { username: to },
-      { $pull: { friendrequests: { from: from } } }
-    );
-    if (!user) return res.status(404).json({ message: "Unsuccessful request" });
-
     res.status(200).json({ message: "Friend request rejected", to });
   }
+  if (user1.friendrequests?.some((e: any) => e.to === to))
+    user1.friendrequests = user1.friendrequests?.filter(
+      (e: any) => e.to !== to
+    );
+  if (user2.friendrequests?.some((e: any) => e.from === from))
+    user2.friendrequests = user2.friendrequests?.filter(
+      (e: any) => e.from !== from
+    );
+  user1.save();
+  user2.save();
 });
 app.get("/api/pvtmessages", async (req, res) => {
   try {
@@ -349,9 +393,9 @@ app.get("/api/pvtmessages/history", async (req, res) => {
       timestamp: { $lt: new Date(before as string) },
     };
     const messages = await MessageModel.find(query)
-      .sort({ timestamp: 1 })
-      .limit(30);
-    res.json(messages); // reverse so newest is at bottom
+      .sort({ timestamp: -1 })
+      .limit(30)
+    res.json(messages.reverse());
   } catch (err) {
     console.error("Error fetching history:", err);
     res.status(500).json({ error: "Failed to fetch history" });
@@ -386,7 +430,7 @@ app.get("/api/roommessages/history", async (req, res) => {
     };
     const messages = await MessageModel.find(query)
       .sort({ timestamp: 1 })
-      .limit(30);
+      .limit(10);
     res.json(messages);
   } catch (err) {
     console.error("Error fetching history:", err);
@@ -400,4 +444,3 @@ httpServer.listen(3000, async () => {
   );
   console.log("Socket.IO server running on port 3000");
 });
-

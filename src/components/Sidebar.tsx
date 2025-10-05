@@ -13,9 +13,11 @@ const Sidebar = ({
   onSelect,
   onSelectRight,
 }: {
-  current: "files" | "search" | "git" | "db" | null;
+  current: "files" | "search" | "git" | "db" | "music" | null;
   currentRight: "chat" | "assist" | null;
-  onSelect: (content: "files" | "search" | "git" | "db" | null) => void;
+  onSelect: (
+    content: "files" | "search" | "git" | "db" | "music" | null
+  ) => void;
   onSelectRight: (content: "chat" | "assist" | null) => void;
 }) => {
   return (
@@ -44,12 +46,24 @@ const Sidebar = ({
       >
         <Database solid={current === "db"} />
       </li>
-      <li className="hover:bg-gray-200 px-2 py-4"
-        onClick={() => onSelectRight("chat")}>
+      <li
+        className="hover:bg-gray-200 px-2 py-4"
+        onClick={() => onSelectRight("chat")}
+      >
         <Messages solid={currentRight === "chat"} />
       </li>
       <li className="hover:bg-gray-200 px-2 py-4">
         <AddTask solid={false} />
+      </li>
+      <li
+        className="hover:bg-gray-200 px-2 py-4"
+        onClick={() => onSelect("music")}
+      > 
+        <img
+          width="64"
+          alt="Spotify icon"
+          src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Spotify_icon.svg/64px-Spotify_icon.svg.png?20220821125323"
+        />
       </li>
     </ul>
   );

@@ -1,0 +1,150 @@
+{!inCall && (
+  <SignedIn>
+    <div className="flex w-full h-full">
+      {/* Left Drawer */}
+      <div
+        className={`h-full transition-all duration-300 ${
+          drawerOpen ? "w-64" : "w-[50px]"
+        } bg-neutral-900 border-r border-neutral-700 flex flex-col`}
+      >
+        <button
+          className="p-2 text-white"
+          onClick={() => setDrawerOpen(!drawerOpen)}
+        >
+          {drawerOpen ? "<" : ">"}
+        </button>
+
+        {drawerOpen && (
+          <div className="flex flex-col gap-2 mt-4">
+            <div className="border-b border-neutral-300 py-2 cursor-pointer">
+              {userData?.username ?? "Guest"}
+            </div>
+            {/* You can add nav items here later */}
+          </div>
+        )}
+      </div>
+
+      {/* Right Side */}
+      <div className="flex-1 flex flex-col">
+        {/* Tabs */}
+        {!inChat && (
+          <div className="flex border-b border-neutral-300">
+            <button
+              onClick={() => setChatMode("private")}
+              className={`flex-1 py-2 text-center ${
+                chatMode === "private"
+                  ? "bg-blue-600 text-white"
+                  : "hover:bg-neutral-200"
+              }`}
+            >
+              Private
+            </button>
+            <button
+              onClick={() => setChatMode("group")}
+              className={`flex-1 py-2 text-center ${
+                chatMode === "group"
+                  ? "bg-blue-600 text-white"
+                  : "hover:bg-neutral-200"
+              }`}
+            >
+              Group
+            </button>
+          </div>
+        )}
+
+        {/* Chat Area */}
+        <div className="flex-1 overflow-y-auto">
+          {inChat ? (
+            <div className="flex flex-col h-full">
+              {/* Header */}
+              <div className="flex h-12 items-center gap-2 border-b border-neutral-300 p-4">
+                <ChevronLeft
+                  className="cursor-pointer"
+                  onClick={() => {
+                    setInChat(false);
+                    setTargetUser("");
+                    setRoom(null);
+                  }}
+                />
+                {targetUser || room?.room}
+              </div>
+
+              {/* Messages */}
+              <div
+                ref={chatRef}
+                onScroll={handleScroll}
+                className="flex-1 overflow-y-scroll p-2 flex flex-col gap-2"
+              >
+                {messages.length === 0 ? (
+                  <div className="text-center text-gray-400">
+                    No messages. Start a conversation.
+                  </div>
+                ) : (
+                  messages
+                    .filter(
+                      (msg) =>
+                        msg.chatKey === `${room?.room}:${room?.roomId}` ||
+                        msg.chatKey ===
+                          `chat:${[userData?.username, targetUser]
+                            .sort()
+                            .join(":")}`
+                    )
+                    .map((msg, idx) => (
+                      <div
+                        ref={idx === messages.length - 1 ? currRef : null}
+                        key={msg.id}
+                        className={`flex px-4 ${
+                          msg.from === userData?.username
+                            ? "justify-end"
+                            : msg.from === "system"
+                            ? "justify-center"
+                            : "justify-start"
+                        }`}
+                      >
+                        <div
+                          className={`px-3 py-2 rounded-2xl max-w-[70%] ${
+                            msg.from === userData?.username
+                              ? "bg-blue-600 text-white rounded-br-none"
+                              : msg.from === "system"
+                              ? "bg-primary text-neutral-300 rounded text-center"
+                              : "bg-gray-700 text-gray-100 rounded-bl-none"
+                          }`}
+                        >
+                          {msg.text}
+                          <span className="block text-xs text-gray-400 text-right">
+                            {formatToIST(msg.timestamp)}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+
+              {/* Input */}
+              <div className="p-3 h-12 border-t border-gray-800 flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Type a message..."
+                  className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                />
+                <button
+                  onClick={sendMessage}
+                  className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 text-sm"
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-400">
+              Select a chat to start messaging
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  </SignedIn>
+)}
