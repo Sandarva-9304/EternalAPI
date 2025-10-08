@@ -1,9 +1,0 @@
-export {default as Clipboard} from "./Clipboard";
-export {default as Database} from "./Database";
-export {default as Files} from "./Files";
-export {default as Settings} from "./Settings";
-export {default as SourceControl} from "./SourceControl";
-export {default as Trash} from "./Trash";
-export {default as Search} from "./Search";
-export {default as Messages} from "./Messages";
-export {default as AddTask} from "./AddTask";
