@@ -73,7 +73,7 @@ app.whenReady().then(() => {
   createWindow();
 
   tray = new Tray(
-    "C:\\Users\\LENOVO\\OneDrive\\Desktop\\Projects\\Eternalv2\\electron\\Logo.png"
+    "C:\\Users\\LENOVO\\OneDrive\\Desktop\\Projects\\Eternalv2\\frontend\\electron\\Logo.png"
   );
   const contextMenu = Menu.buildFromTemplate([
     {

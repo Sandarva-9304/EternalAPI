@@ -1,3 +1,4 @@
+import { useEditor } from "./contexts/EditorContext";
 import {
   Files,
   Database,
@@ -5,6 +6,7 @@ import {
   Search,
   Messages,
   AddTask,
+  Trello,
 } from "./svgs/SvgIndex";
 
 const Sidebar = ({
@@ -20,6 +22,7 @@ const Sidebar = ({
   ) => void;
   onSelectRight: (content: "chat" | "assist" | null) => void;
 }) => {
+  const { setActiveTab, setTabList } = useEditor();
   return (
     <ul className="flex flex-col items-center justify-start w-12 h-[calc(100vh-52px)] bg-primary/30">
       <li
@@ -52,10 +55,13 @@ const Sidebar = ({
       >
         <Messages solid={currentRight === "chat"} />
       </li>
-      <li className="hover:bg-gray-200 px-2 py-4">
-        <AddTask solid={false} />
-      </li>
       <li
+        className="hover:bg-gray-200 px-2 py-4"
+        onClick={() => setActiveTab("Trello")}
+      >
+        <Trello />
+      </li>
+      {/* <li
         className="hover:bg-gray-200 px-2 py-4"
         onClick={() => onSelect("music")}
       > 
@@ -64,7 +70,7 @@ const Sidebar = ({
           alt="Spotify icon"
           src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Spotify_icon.svg/64px-Spotify_icon.svg.png?20220821125323"
         />
-      </li>
+      </li> */}
     </ul>
   );
 };

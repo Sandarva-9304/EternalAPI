@@ -14,6 +14,9 @@ interface EditorContextType {
 
   tabList: string[];
   setTabList: React.Dispatch<React.SetStateAction<string[]>>;
+
+  activeTab: string;
+  setActiveTab: React.Dispatch<React.SetStateAction<string>>;
 }
 
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
@@ -25,7 +28,8 @@ export const EditorProvider = ({ children }: { children: React.ReactNode }) => {
   const [openFiles, setOpenFiles] = useState<File[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [tabList, setTabList] = useState<string[]>(["Home"]);
+  const [tabList, setTabList] = useState<string[]>(["Home", "Trello"]);
+  const [activeTab, setActiveTab] = useState("Home");
 
   return (
     <EditorContext.Provider
@@ -40,6 +44,8 @@ export const EditorProvider = ({ children }: { children: React.ReactNode }) => {
         setQuery,
         tabList,
         setTabList,
+        activeTab,
+        setActiveTab,
       }}
     >
       {children}

@@ -5,6 +5,10 @@ import { MessageModel } from "./models/Messages.js";
 import { RoomModel } from "./models/Room.js";
 import { Server, Socket } from "socket.io";
 import { redis } from "./redis.js";
+import OAuth from "oauth";
+import { encrypt, decrypt } from "./encryption.js";
+import querystring from "querystring";
+import { URLSearchParams } from "url";
 import cors from "cors";
 import { connectToDatabase } from "./db.js";
 import {
@@ -225,7 +229,17 @@ io.on("connection", (socket: Socket) => {
 
   socket.on(
     "offer",
-    ({ to, offer, from, callType }: { to: string; offer: any; from: string; callType: boolean }) => {
+    ({
+      to,
+      offer,
+      from,
+      callType,
+    }: {
+      to: string;
+      offer: any;
+      from: string;
+      callType: boolean;
+    }) => {
       console.log("offer-hit", to, from, callType);
       const toId = users[to];
       console.log(toId);
@@ -259,19 +273,19 @@ io.on("connection", (socket: Socket) => {
     if (toId) {
       io.to(toId).emit("call-rejected");
     }
-  })
+  });
   socket.on("hangup", ({ to }: { to: string }) => {
     const toId = users[to];
     if (toId) {
       io.to(toId).emit("hangup");
     }
-  })
+  });
   socket.on("call-accepted", ({ from }: { from: string }) => {
     const toId = users[from];
     if (toId) {
       io.to(toId).emit("call-accepted");
     }
-  })
+  });
 
   // Handle disconnect
   socket.on("disconnect", () => {
@@ -394,7 +408,7 @@ app.get("/api/pvtmessages/history", async (req, res) => {
     };
     const messages = await MessageModel.find(query)
       .sort({ timestamp: -1 })
-      .limit(30)
+      .limit(30);
     res.json(messages.reverse());
   } catch (err) {
     console.error("Error fetching history:", err);
@@ -438,9 +452,208 @@ app.get("/api/roommessages/history", async (req, res) => {
   }
 });
 
-httpServer.listen(3000, async () => {
-  await connectToDatabase(
-    "mongodb+srv://sahil_ansari_47:Codename%4047@cluster0.2wo5v83.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-  );
+const TRELLO_API_KEY = "cf65b856f8f927361f2b67a0e7cf6e33";
+const TRELLO_SECRET =
+  "49299d59a792d2ff74685ce5b2cfc75d35717368af5f370769cf601894595b80";
+// const TRELLO_TOKEN =
+//   "ATTA28554430099fbeee96ba6832d37167a2b881b57c7d0bdd7c47d99304b0d04a0462114C2F";
+const callbackUrl = "http://127.0.0.1:3000/api/auth/trello/callback";
+const trelloOAuth = new OAuth.OAuth(
+  "https://trello.com/1/OAuthGetRequestToken",
+  "https://trello.com/1/OAuthGetAccessToken",
+  TRELLO_API_KEY,
+  TRELLO_SECRET,
+  "1.0",
+  callbackUrl,
+  "HMAC-SHA1"
+);
+
+// Store tokens temporarily (use a DB or session in real apps)
+let requestTokens: Record<string, string> = {};
+
+app.get("/api/auth/trello", (req, res) => {
+  trelloOAuth.getOAuthRequestToken((error, token, tokenSecret) => {
+    if (error) return res.status(500).json({ error });
+
+    requestTokens[token] = tokenSecret;
+
+    const trelloAuthUrl = `https://trello.com/1/OAuthAuthorizeToken?oauth_token=${token}&name=MyApp&expiration=never&scope=read,write`;
+    res.redirect(trelloAuthUrl);
+  });
+});
+app.get(
+  "/api/auth/trello/callback",
+  requireAuth,
+  (req: express.Request, res: express.Response) => {
+    const { oauth_token, oauth_verifier } = req.query;
+    console.log("🔹 Trello callback hit", { oauth_token, oauth_verifier });
+
+    if (typeof oauth_token !== "string" || typeof oauth_verifier !== "string") {
+      return res
+        .status(400)
+        .json({ error: "Missing or invalid oauth_token or oauth_verifier" });
+    }
+
+    const tokenSecret = requestTokens[oauth_token];
+    if (!tokenSecret) {
+      return res.status(400).json({ error: "Missing request token" });
+    }
+
+    trelloOAuth.getOAuthAccessToken(
+      oauth_token,
+      tokenSecret,
+      oauth_verifier,
+      async (error, accessToken, accessTokenSecret) => {
+        try {
+          if (error) {
+            console.error("❌ Trello token exchange failed:", error);
+            return res
+              .status(500)
+              .json({ error: "OAuth token exchange failed" });
+          }
+
+          const { userId } = getAuth(req);
+          if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+          const encryptedAccess = encrypt(accessToken);
+          const encryptedSecret = encrypt(accessTokenSecret);
+
+          await UserModel.findOneAndUpdate(
+            { uid: userId },
+            {
+              trello: {
+                accessToken: encryptedAccess,
+                accessTokenSecret: encryptedSecret,
+                connectedAt: new Date(),
+              },
+            },
+            { new: true }
+          );
+
+          delete requestTokens[oauth_token]; // cleanup
+
+          console.log("✅ Trello tokens saved for user", userId);
+          res.redirect("http://127.0.0.1:5173?trello=connected");
+        } catch (err) {
+          console.error("❌ Error in Trello callback:", err);
+          if (!res.headersSent) {
+            res.status(500).json({ error: "Internal server error" });
+          }
+        }
+      }
+    );
+  }
+);
+
+// 3️⃣ Example protected route: Get Trello user info
+app.get(
+  "/api/trello/me",
+  requireAuth,
+  async (req: express.Request, res: express.Response) => {
+    // In real app, use logged-in user's tokens
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    let mongoUser = await UserModel.findOne({ uid: userId });
+    if (!mongoUser || !mongoUser.trello)
+      return res.status(401).json({ error: "No User Found" });
+    const accessToken = decrypt(mongoUser.trello.accessToken);
+    const accessTokenSecret = decrypt(mongoUser.trello.accessTokenSecret);
+    if (accessTokenSecret === undefined || accessToken === undefined)
+      return res.status(500).json({ error: "Missing access token or secret" });
+    trelloOAuth.get(
+      "https://api.trello.com/1/members/me",
+      accessToken,
+      accessTokenSecret,
+      (error, data) => {
+        if (error) return res.status(500).json({ error });
+        if (typeof data === "string") {
+          res.json(JSON.parse(data));
+        } else if (Buffer.isBuffer(data)) {
+          res.json(JSON.parse(data.toString("utf-8")));
+        } else {
+          res
+            .status(500)
+            .json({ error: "Unexpected response from Trello API" });
+        }
+      }
+    );
+  }
+);
+const HOST = "127.0.0.1";
+httpServer.listen(3000, HOST, async () => {
+  // await connectToDatabase(
+  //   "mongodb+srv://sahil_ansari_47:Codename%4047@cluster0.2wo5v83.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+  // );
+  await connectToDatabase(process.env.MONGODB_URI!);
   console.log("Socket.IO server running on port 3000");
 });
+
+// const client_id = "18eba932e5e94987b758ca7cdd53e6bc";
+// const client_secret = "cf53288f78f34d3692c9f2b1c77e3a27";
+// const redirect_uri = "http://127.0.0.1:3000/api/spotify/callback";
+
+// app.get("/api/spotify/login", (req, res) => {
+//   const scope =
+//     "user-read-email user-read-private";
+
+//   const state = Math.random().toString(36).substring(2, 15); // random state to prevent CSRF
+
+//   const query = querystring.stringify({
+//     response_type: "code",
+//     client_id,
+//     scope,
+//     redirect_uri,
+//     state,
+//   });
+
+//   res.redirect(`https://accounts.spotify.com/authorize?${query}`);
+// });
+// app.get("/api/spotify/callback", async (req, res) => {
+//   const code = req.query.code || "";
+
+//   const response = await fetch("https://accounts.spotify.com/api/token", {
+//     method: "POST",
+//     headers: {
+//       "Content-Type": "application/x-www-form-urlencoded",
+//       Authorization:
+//         "Basic " +
+//         Buffer.from(`${client_id}:${client_secret}`).toString("base64"),
+//     },
+//     body: new URLSearchParams({
+//       grant_type: "authorization_code",
+//       code: code.toString(),
+//       redirect_uri: redirect_uri,
+//     }),
+//   });
+
+//   const data = await response.json();
+//   console.log(data);
+//   res.redirect(
+//     `http://localhost:5173/spotify/success?access_token=${data.access_token}&refresh_token=${data.refresh_token}`
+//   );
+// });
+// app.get("api/spotify/me", function (req, res) {
+//   var code = req.query.code || null;
+//   var state = req.query.state || null;
+//   const params = new URLSearchParams({
+//     error: "state_mismatch",
+//   });
+//   if (state === null) {
+//     res.redirect("/#" + params.toString());
+//   } else {
+//     const bufferData = Buffer.from(client_id + ":" + client_secret, "utf-8");
+//     authOptions = {
+//       url: "https://accounts.spotify.com/api/token",
+//       form: {
+//         code: code,
+//         redirect_uri: redirect_uri,
+//         grant_type: "authorization_code",
+//       },
+//       headers: {
+//         "content-type": "application/x-www-form-urlencoded",
+//         Authorization: "Basic " + bufferData.toString("base64"),
+//       },
+//       json: true,
+//     };
+//   }
+// });

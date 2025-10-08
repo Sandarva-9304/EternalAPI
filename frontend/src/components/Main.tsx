@@ -1,15 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Editor from "./Editor";
 import Welcome from "./Welcome";
 import Call from "./Call";
-// import AddTask from "./Trello"
+import AddTask from "./AddTask";
 // import Spotify from "./Spotify"
 import { useEditor } from "./contexts/EditorContext";
 import { useMessage } from "./contexts/MessageContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 const Main = () => {
-  const [activeTab, setActiveTab] = useState("Home");
-  const { tabList, setTabList, openFiles } = useEditor();
+  const { tabList, setTabList, openFiles, activeTab, setActiveTab } =
+    useEditor();
   const { inCall } = useMessage();
   useEffect(() => {
     if (inCall) {
@@ -53,6 +53,9 @@ const Main = () => {
       </TabsContent>
       <TabsContent value="Call">
         <Call />
+      </TabsContent>
+      <TabsContent value="Trello">
+        <AddTask />
       </TabsContent>
     </Tabs>
   );

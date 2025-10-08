@@ -11,3 +11,4 @@ export {default as CloseFolder} from "./CloseFolder";
 export {default as Reload} from "./Reload";
 export {default as NewFile} from "./NewFile";
 export {default as NewFolder} from "./NewFolder";
+export {default as Trello} from "./Trello";

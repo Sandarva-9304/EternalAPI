@@ -1,0 +1,30 @@
+{
+  "name": "eternalv2",
+  "productName": "Eternal",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "npx tsc -b",
+    "server": "node dist/server.js",
+    "start": "npm run server"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/oauth": "^0.9.6",
+    "express": "^5.1.0",
+    "ts-node": "^10.9.2"
+  },
+  "dependencies": {
+    "@clerk/express": "^1.7.31",
+    "@tailwindcss/vite": "^4.1.13",
+    "@upstash/redis": "^1.35.3",
+    "dotenv": "^17.2.2",
+    "node-pty": "^1.0.0",
+    "oauth": "^0.10.2",
+    "socket.io": "^4.8.1"
+  }
+}

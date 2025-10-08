@@ -5,6 +5,11 @@ export interface IUser extends Document {
   avatar: string;
   friends?: Object[];
   friendrequests?: Object[];
+  trello?: {
+    accessToken: string;
+    accessTokenSecret: string;
+    connectedAt: Date;
+  };
   groups?: Object[];
 }
 const UserSchema: Schema = new Schema<IUser>(
@@ -14,6 +19,11 @@ const UserSchema: Schema = new Schema<IUser>(
     avatar: { type: String, required: true },
     friends: [{ type: Object, required: false }],
     friendrequests: [{ type: Object, required: false }],
+    trello: {
+      accessToken: { type: String, required: false },
+      accessTokenSecret: { type: String, required: false },
+      connectedAt: { type: Date, required: false },
+    },
     groups: [{ type: Object, required: false }],
   },
   { timestamps: true }
