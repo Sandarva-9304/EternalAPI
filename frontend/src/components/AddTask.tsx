@@ -6,7 +6,7 @@ import { SignInButton } from "@clerk/clerk-react";
 const AddTask = () => {
   const { userData, fetchUser } = useUser();
   const [loggedIn, setLoggedIn] = useState(false);
-
+  const backendUrl = "https://eternalv2.onrender.com";
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("trello") === "connected") {
@@ -17,7 +17,7 @@ const AddTask = () => {
   }, []);
 
   const loginTrello = () => {
-    window.location.href = "http://127.0.0.1:3000/api/auth/trello";
+    window.location.href = `${backendUrl}/api/auth/trello`;
   };
 
   return (

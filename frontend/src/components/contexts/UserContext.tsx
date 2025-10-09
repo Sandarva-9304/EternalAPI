@@ -22,10 +22,12 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [incomingFrom, setIncomingFrom] = useState<string | null>(null);
   const [pendingOffer, setPendingOffer] = useState<any>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
+  const backendUrl = "https://eternalv2.onrender.com";
+  console.log(backendUrl);
   const fetchUser = async () => {
     if (isSignedIn) {
       const token = await getToken();
-      const res = await fetch("http://localhost:3000/api/users/me", {
+      const res = await fetch(`${backendUrl}/api/users/me`, {
         headers: {
           Authorization: `Bearer ${token}`, // 👈 send token
         },

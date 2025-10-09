@@ -56,7 +56,7 @@ const FileSystem = () => {
     null | "newFile" | "newFolder" | "rename" | "delete" | "clone"
   >(null);
   const [value, setValue] = useState("");
-
+  const backendUrl = "https://eternalv2.onrender.com";
   // load root children when workspace changes
   useEffect(() => {
     if (!workspace) {
@@ -309,7 +309,7 @@ const FileSystem = () => {
     if (!isSignedIn) return;
     const token = await getToken();
     if (!token) return;
-    const res = await fetch("http://localhost:3000/api/users/me", {
+    const res = await fetch(`${backendUrl}/api/users/me`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },

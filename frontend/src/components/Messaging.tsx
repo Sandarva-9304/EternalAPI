@@ -72,7 +72,7 @@ const Messaging = () => {
   useEffect(() => {
     fetchUser().catch((err) => console.error("Failed to sync user:", err));
   }, [chatMode]);
-  const backendUrl = "http://localhost:3000";
+  const backendUrl = "https://eternalv2.onrender.com";
   const fetchMessages = async (before?: string) => {
     let url = "";
     if (targetUser) {
@@ -173,7 +173,7 @@ const Messaging = () => {
       return console.log("Already friends!");
     try {
       const token = await getToken();
-      const res = await fetch("http://localhost:3000/api/friends/add", {
+      const res = await fetch(`${backendUrl}/api/friends/add`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -199,7 +199,7 @@ const Messaging = () => {
     if (!userData?.username) return;
     try {
       const token = await getToken();
-      const res = await fetch("http://localhost:3000/api/friends/handle", {
+      const res = await fetch(`${backendUrl}/api/friends/handle`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
