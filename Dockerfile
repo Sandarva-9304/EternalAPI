@@ -27,7 +27,6 @@ RUN npm install --omit=dev
 
 # Copy dist folder from builder
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/.env ./.env
 
 # Expose the port your server uses
 EXPOSE 3000

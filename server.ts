@@ -354,32 +354,47 @@ app.put("/api/friends/add", requireAuth(), async (req, res) => {
   await user2.save();
   res.status(200).json({ message: "Friend request sent to", to });
 });
-
 app.put("/api/friends/handle", requireAuth(), async (req, res) => {
-  console.log("handle-hit");
-  const { from, to, accept } = req.body;
-  const user1 = await UserModel.findOne({ username: from });
-  const user2 = await UserModel.findOne({ username: to });
-  if (!user1 || !user2)
-    return res.status(404).json({ message: "Unsuccessful request" });
-  if (accept) {
-    user1.friends?.push({ username: to, avatar: user2.avatar });
-    user2.friends?.push({ username: from, avatar: user1.avatar });
-    res.status(200).json({ message: "Friend request accepted", to });
-  } else {
-    res.status(200).json({ message: "Friend request rejected", to });
+  try {
+    console.log("handle-hit");
+    const { from, to, accept } = req.body;
+    const user1 = await UserModel.findOne({ username: from });
+    const user2 = await UserModel.findOne({ username: to });
+    if (!user1 || !user2) {
+      return res.status(404).json({ message: "Unsuccessful request" });
+    }
+    if (accept) {
+      user1.friends = user1.friends || [];
+      user2.friends = user2.friends || [];
+      const alreadyFriends1 = user1.friends.some(
+        (friend: any) => friend.username === to
+      );
+      const alreadyFriends2 = user2.friends.some(
+        (friend: any) => friend.username === from
+      );
+      if (!alreadyFriends1) {
+        user1.friends.push({ username: to, avatar: user2.avatar });
+      }
+      if (!alreadyFriends2) {
+        user2.friends.push({ username: from, avatar: user1.avatar });
+      }
+      res.status(200).json({ message: "Friend request accepted", to });
+    } else {
+      res.status(200).json({ message: "Friend request rejected", to });
+    }
+    user1.friendrequests =
+      user1.friendrequests?.filter((req: any) => req.to !== to) || [];
+
+    user2.friendrequests =
+      user2.friendrequests?.filter((req: any) => req.from !== from) || [];
+
+    await Promise.all([user1.save(), user2.save()]);
+  } catch (error) {
+    console.error("Error in /api/friends/handle:", error);
+    res.status(500).json({ message: "Server error" });
   }
-  if (user1.friendrequests?.some((e: any) => e.to === to))
-    user1.friendrequests = user1.friendrequests?.filter(
-      (e: any) => e.to !== to
-    );
-  if (user2.friendrequests?.some((e: any) => e.from === from))
-    user2.friendrequests = user2.friendrequests?.filter(
-      (e: any) => e.from !== from
-    );
-  user1.save();
-  user2.save();
 });
+
 app.get("/api/pvtmessages", async (req, res) => {
   try {
     const { from, to } = req.query;
@@ -577,8 +592,9 @@ app.get(
     );
   }
 );
-const HOST = "127.0.0.1";
-httpServer.listen(3000, HOST, async () => {
+// const HOST = "127.0.0.1";
+const PORT = process.env.PORT || 3000;
+httpServer.listen(PORT, async () => {
   // await connectToDatabase(
   //   "mongodb+srv://sahil_ansari_47:Codename%4047@cluster0.2wo5v83.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
   // );

@@ -1,5 +1,5 @@
-
 .env
 dist/
-# spotApi
+spotApi
 node_modules/
+package-lock.json
