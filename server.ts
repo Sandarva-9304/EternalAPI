@@ -321,6 +321,20 @@ const syncUser = async (
       },
       { upsert: true, new: true }
     );
+    await UserModel.updateMany(
+      { "friends.username": username },
+      {
+        $set: {
+          "friends.$[friend].avatar": `https://github.com/${username}.png`,
+        },
+      },
+      {
+        arrayFilters: [{ "friend.username": username }],
+      }
+    );
+    await clerkClient.users.updateUser(userId, {
+      profileImageID: `https://github.com/${username}.png`,
+    });
     (req as any).user = mongoUser;
     next();
   } catch (err) {
