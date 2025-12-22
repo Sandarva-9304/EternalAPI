@@ -317,7 +317,7 @@ const syncUser = async (
       { uid: clerkUser.id },
       {
         username,
-        avatar: clerkUser.imageUrl,
+        avatar: `https://github.com/${username}.png`,
       },
       { upsert: true, new: true }
     );
