@@ -313,11 +313,25 @@ const syncUser = async (
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
     const clerkUser = await clerkClient.users.getUser(userId);
     const username = clerkUser.username;
+    const imageUrl = `https://github.com/${username}.png`;
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new Error("Failed to fetch GitHub avatar");
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    const file = new File([buffer], "avatar.png", {
+      type: "image/png",
+    });
+
+    await clerkClient.users.updateUserProfileImage(userId, { file });
+
     const mongoUser = await UserModel.findOneAndUpdate(
       { uid: clerkUser.id },
       {
         username,
-        avatar: `https://github.com/${username}.png`,
+        avatar: imageUrl,
       },
       { upsert: true, new: true }
     );
@@ -325,16 +339,14 @@ const syncUser = async (
       { "friends.username": username },
       {
         $set: {
-          "friends.$[friend].avatar": `https://github.com/${username}.png`,
+          "friends.$[friend].avatar": imageUrl,
         },
       },
       {
         arrayFilters: [{ "friend.username": username }],
       }
     );
-    // await clerkClient.users.updateUser(userId, {
-    //   profileImageID: `https://github.com/${username}.png`,
-    // });
+
     (req as any).user = mongoUser;
     next();
   } catch (err) {
