@@ -70,7 +70,6 @@ io.on("connection", (socket: Socket) => {
     }
   });
 
-  // ✅ One-to-One Messaging
   socket.on(
     "privateMessage",
     async ({
@@ -100,8 +99,8 @@ io.on("connection", (socket: Socket) => {
         chatKey,
       };
       console.log(message.timestamp);
+      await redis.del(chatKey);
       await redis.rpush(chatKey, message);
-      await redis.ltrim(chatKey, -MESSAGE_LIMIT, -1);
       await MessageModel.create(message);
       if (toSocketId) {
         io.to(toSocketId).emit("privateMessage", message);
@@ -193,8 +192,8 @@ io.on("connection", (socket: Socket) => {
         chatKey,
         timestamp,
       };
+      await redis.del(chatKey);
       await redis.rpush(chatKey, message);
-      await redis.ltrim(chatKey, -MESSAGE_LIMIT, -1);
       await MessageModel.create(message);
       const group = await RoomModel.findOne({ roomId });
       if (!group) return;
@@ -228,7 +227,6 @@ io.on("connection", (socket: Socket) => {
       }
     }
   );
-
   socket.on(
     "offer",
     ({
