@@ -331,7 +331,7 @@ const syncUser = async (
       { uid: clerkUser.id },
       {
         username,
-        avatar: imageUrl,
+        avatar: clerkUser.imageUrl,
       },
       { upsert: true, new: true }
     );
@@ -339,7 +339,7 @@ const syncUser = async (
       { "friends.username": username },
       {
         $set: {
-          "friends.$[friend].avatar": imageUrl,
+          "friends.$[friend].avatar": clerkUser.imageUrl,
         },
       },
       {
