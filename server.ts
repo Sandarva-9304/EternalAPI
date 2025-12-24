@@ -475,75 +475,27 @@ app.get("/api/usermessages", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-app.get("/api/pvtmessages", async (req, res) => {
+app.get("/api/messages/:chatKey", requireAuth(), async (req, res) => {
   try {
-    const { from, to } = req.query;
-    console.log("Fetching messages...");
-    const messages = await redis.lrange(
-      `chat:${[from, to].sort().join(":")}`,
-      -MESSAGE_LIMIT,
-      -1
-    );
-    res.json(messages);
+    const { chatKey } = req.params;
+    const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+    const limit = MESSAGE_LIMIT;
+    const skip = (page - 1) * limit;
+    const messages = await MessageModel.find({ chatKey })
+      .sort({ timestamp: -1 }) // newest first
+      .skip(skip)
+      .limit(limit)
+      .lean();
+    res.json({
+      chatKey,
+      page,
+      limit,
+      hasMore: messages.length === limit,
+      messages: messages.reverse(), // oldest → newest
+    });
   } catch (err) {
     console.error("Error fetching messages:", err);
     res.status(500).json({ error: "Failed to fetch messages" });
-  }
-});
-
-app.get("/api/pvtmessages/history", async (req, res) => {
-  console.log("fetch history");
-  try {
-    const { from, to, before } = req.query;
-    const chatKey = `chat:${[from, to].sort().join(":")}`;
-    console.log("before", before);
-    const query: any = {
-      chatKey,
-      timestamp: { $lt: new Date(before as string) },
-    };
-    const messages = await MessageModel.find(query)
-      .sort({ timestamp: -1 })
-      .limit(30);
-    res.json(messages.reverse());
-  } catch (err) {
-    console.error("Error fetching history:", err);
-    res.status(500).json({ error: "Failed to fetch history" });
-  }
-});
-
-app.get("/api/roommessages", async (req, res) => {
-  try {
-    const { room, roomId } = req.query;
-    console.log("Fetching messages...");
-    const messages = await redis.lrange(
-      `${room}:${roomId}`,
-      -MESSAGE_LIMIT,
-      -1
-    );
-    res.json(messages);
-  } catch (err) {
-    console.error("Error fetching messages:", err);
-    res.status(500).json({ error: "Failed to fetch messages" });
-  }
-});
-
-app.get("/api/roommessages/history", async (req, res) => {
-  console.log("fetch history");
-  try {
-    const { room, roomId, before } = req.query;
-    const chatKey = `${room}:${roomId}`;
-    console.log("before", before);
-    const query: any = {
-      chatKey,
-      timestamp: { $lt: new Date(before as string) },
-    };
-    const messages = await MessageModel.find(query)
-      .sort({ timestamp: 1 })
-      .limit(10);
-    res.json(messages);
-  } catch (err) {
-    console.error("Error fetching history:", err);
-    res.status(500).json({ error: "Failed to fetch history" });
   }
 });
 
