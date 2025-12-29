@@ -12,7 +12,7 @@
 ---
 
 <p align="center">
-  <img src="public/logo.png" width="500" length="500" alt="Eternal IDE Logo" />
+  <img src="logo.png" width="500" length="500" alt="Eternal IDE Logo" />
 </p>
 <p align="center">
   <strong>Eternal IDE</strong> is a modern, Windows/Linux desktop IDE built with <strong>Tauri</strong>, <strong>React</strong>, and <strong>TypeScript</strong>.
